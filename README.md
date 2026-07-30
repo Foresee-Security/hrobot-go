@@ -21,26 +21,41 @@ is useful, but we are not constrained by it.
 Note the module path is `github.com/Foresee-Security/hrobot-go`. Import that,
 not the upstream path.
 
-### Known gaps we intend to close
+### Quality gate
 
-Measured against the current tree rather than assumed, in rough priority order:
+This fork is checked with the same setup as the code that consumes it: Go
+1.26.5, `golangci-lint` 2.12.2 across 38 linters against the `.golangci.yml`
+here, `go test -race`, `govulncheck`, and `nilaway`. That first run reported 28
+lint issues. Three remain, all of them the same one, described below.
 
-1. **No `context.Context` on any call.** Every request goes through
-   `http.NewRequest`, so nothing can be cancelled and no call carries a
-   deadline. A wedged request blocks its caller indefinitely.
-2. **The default HTTP client has no timeout.** `NewBasicAuthClient` builds a
-   bare `&http.Client{}`, which in Go means no timeout at all. Combined with
-   point 1, a single unresponsive request can hang a caller forever.
-3. **Credentials are plain exported fields.** `Client.Username` and
-   `Client.Password` are readable and, more importantly, printable. Any
-   `%+v` of a client writes the password wherever that lands. Redaction
-   belongs on the type.
-4. **Response bodies are read unbounded.** `io.ReadAll` with no ceiling.
-5. **Missing endpoints.** Firewall (including the `rules[output]` egress
+### Closed
+
+- **Context and deadlines.** Every method that performs I/O takes a
+  `context.Context` first and builds requests with
+  `http.NewRequestWithContext`. Previously nothing could be cancelled and no
+  call carried a deadline.
+- **Request timeout.** `NewBasicAuthClient` built a bare `&http.Client{}`,
+  which in Go means no timeout at all. It now defaults to 30 seconds. A
+  caller-supplied client keeps its own.
+- **Credential redaction.** `String` and `LogValue` mask the password, so a
+  stray `%v` cannot leak it.
+- **Bounded reads.** Response bodies cap at 8 MiB and report oversize rather
+  than truncating into an undiagnosable parse failure.
+- **Wrapped-error matching.** `models.IsError` uses `errors.As` instead of a
+  direct type assertion, so adding context with `%w` no longer breaks code
+  matching.
+
+### Still open
+
+1. **Missing endpoints.** Firewall (including the `rules[output]` egress
    direction), vSwitch, Storage Box, traffic, subnet, and the whole ordering
-   tree are absent.
-6. **Test framework dependency.** Tests pull `gopkg.in/check.v1` rather than
-   using the standard library.
+   tree are absent. Firewall is the one we need first.
+2. **Test framework.** All eight test files dot-import `gopkg.in/check.v1`,
+   which is that framework's idiom and the source of the three remaining lint
+   findings. Moving to the standard library would also drop the last three
+   dependencies and leave this module with none, but it means rewriting 225
+   assertions. Deliberately deferred rather than overlooked.
+3. **No CI.** The gate above runs by hand.
 
 The `go` directive has been moved from 1.17 to 1.26 to match the toolchain we
 build against.
