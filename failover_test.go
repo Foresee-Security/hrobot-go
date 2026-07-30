@@ -1,8 +1,7 @@
 package client_test
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +18,7 @@ func (s *ClientSuite) TestFailoverGetListSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/failover_list.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/failover_list.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -30,7 +29,7 @@ func (s *ClientSuite) TestFailoverGetListSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	failoverList, err := robotClient.FailoverGetList()
+	failoverList, err := robotClient.FailoverGetList(context.Background())
 	c.Assert(err, IsNil)
 	c.Assert(len(failoverList), Equals, 1)
 	c.Assert(failoverList[0].IP, Equals, testIP)
@@ -49,7 +48,7 @@ func (s *ClientSuite) TestFailoverGetListInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.FailoverGetList()
+	_, err := robotClient.FailoverGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -62,7 +61,7 @@ func (s *ClientSuite) TestFailoverGetListServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.FailoverGetList()
+	_, err := robotClient.FailoverGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -74,7 +73,7 @@ func (s *ClientSuite) TestFailoverGetSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/failover_get.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/failover_get.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -85,7 +84,7 @@ func (s *ClientSuite) TestFailoverGetSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	failover, err := robotClient.FailoverGet(testIP)
+	failover, err := robotClient.FailoverGet(context.Background(), testIP)
 	c.Assert(err, IsNil)
 	c.Assert(failover.IP, Equals, testIP)
 }
@@ -103,7 +102,7 @@ func (s *ClientSuite) TestFailoverGetInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.FailoverGet(testIP)
+	_, err := robotClient.FailoverGet(context.Background(), testIP)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -116,6 +115,6 @@ func (s *ClientSuite) TestFailoverGetServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.FailoverGet(testIP)
+	_, err := robotClient.FailoverGet(context.Background(), testIP)
 	c.Assert(err, Not(IsNil))
 }

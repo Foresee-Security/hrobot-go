@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	neturl "net/url"
@@ -9,9 +10,9 @@ import (
 	"github.com/Foresee-Security/hrobot-go/models"
 )
 
-func (c *Client) BootRescueGet(id int) (*models.Rescue, error) {
+func (c *Client) BootRescueGet(ctx context.Context, id int) (*models.Rescue, error) {
 	url := c.baseURL + fmt.Sprintf("/boot/%v/rescue", id)
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +26,7 @@ func (c *Client) BootRescueGet(id int) (*models.Rescue, error) {
 	return &rescueResp.Rescue, nil
 }
 
-func (c *Client) BootRescueSet(id int, input *models.RescueSetInput) (*models.Rescue, error) {
+func (c *Client) BootRescueSet(ctx context.Context, id int, input *models.RescueSetInput) (*models.Rescue, error) {
 	url := c.baseURL + fmt.Sprintf("/boot/%v/rescue", id)
 
 	formData := neturl.Values{}
@@ -37,7 +38,7 @@ func (c *Client) BootRescueSet(id int, input *models.RescueSetInput) (*models.Re
 		formData.Set("authorized_key", input.AuthorizedKey)
 	}
 
-	bytes, err := c.doPostFormRequest(url, formData)
+	bytes, err := c.doPostFormRequest(ctx, url, formData)
 	if err != nil {
 		return nil, err
 	}
@@ -51,9 +52,9 @@ func (c *Client) BootRescueSet(id int, input *models.RescueSetInput) (*models.Re
 	return &rescueResp.Rescue, nil
 }
 
-func (c *Client) BootRescueDelete(id int) (*models.Rescue, error) {
+func (c *Client) BootRescueDelete(ctx context.Context, id int) (*models.Rescue, error) {
 	url := c.baseURL + fmt.Sprintf("/boot/%v/rescue", id)
-	bytes, err := c.doDeleteRequest(url)
+	bytes, err := c.doDeleteRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +68,9 @@ func (c *Client) BootRescueDelete(id int) (*models.Rescue, error) {
 	return &rescueResp.Rescue, nil
 }
 
-func (c *Client) BootLinuxGet(id int) (*models.Linux, error) {
+func (c *Client) BootLinuxGet(ctx context.Context, id int) (*models.Linux, error) {
 	url := c.baseURL + fmt.Sprintf("/boot/%v/linux", id)
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func (c *Client) BootLinuxGet(id int) (*models.Linux, error) {
 	return &linuxResp.Linux, nil
 }
 
-func (c *Client) BootLinuxSet(id int, input *models.LinuxSetInput) (*models.Linux, error) {
+func (c *Client) BootLinuxSet(ctx context.Context, id int, input *models.LinuxSetInput) (*models.Linux, error) {
 	url := c.baseURL + fmt.Sprintf("/boot/%v/linux", id)
 
 	formData := neturl.Values{}
@@ -98,7 +99,7 @@ func (c *Client) BootLinuxSet(id int, input *models.LinuxSetInput) (*models.Linu
 		formData.Set("authorized_key", input.AuthorizedKey)
 	}
 
-	bytes, err := c.doPostFormRequest(url, formData)
+	bytes, err := c.doPostFormRequest(ctx, url, formData)
 	if err != nil {
 		return nil, err
 	}
@@ -112,9 +113,9 @@ func (c *Client) BootLinuxSet(id int, input *models.LinuxSetInput) (*models.Linu
 	return &linuxResp.Linux, nil
 }
 
-func (c *Client) BootLinuxDelete(id int) (*models.Linux, error) {
+func (c *Client) BootLinuxDelete(ctx context.Context, id int) (*models.Linux, error) {
 	url := c.baseURL + fmt.Sprintf("/boot/%v/linux", id)
-	bytes, err := c.doDeleteRequest(url)
+	bytes, err := c.doDeleteRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}

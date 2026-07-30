@@ -1,0 +1,149 @@
+version: "2"
+
+# Mirrors the Voltz gate configuration so this fork is held to the same bar as
+# the code that consumes it. Two Voltz-specific blocks are deliberately absent:
+# the depguard rules, which name voltz-* package paths, and the errcheck
+# function exclusions, which name Voltz functions. The rule set is otherwise
+# identical.
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    # --- Correctness (catch real bugs) ---
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - gocritic
+    - makezero
+    - musttag
+    - nilerr
+    - nilnesserr
+    # nilaway: run separately (go.uber.org/nilaway/cmd/nilaway)
+    - noctx
+    - protogetter
+    - recvcheck
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - wastedassign
+
+    # --- Performance ---
+    - mirror
+    - perfsprint
+    - prealloc
+
+    # --- Security ---
+    - gosec
+
+    # --- Observability / tracing ---
+    - loggercheck
+    - sloglint
+    - spancheck
+
+    # --- Style (enforces HRG conventions) ---
+    - forbidigo
+    - intrange
+    - misspell
+    - modernize
+    - predeclared
+    - revive
+    - usestdlibvars
+
+    # --- Test quality ---
+    - testifylint
+
+    # --- Enabled by default (listed for visibility) ---
+    # staticcheck, unused, ineffassign are on by default in golangci-lint v2
+
+  settings:
+    errcheck:
+      check-blank: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    sloglint:
+      context: all
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: use the structured logger (HRG 10.1)
+        - pattern: ^time\.Sleep$
+          msg: no bare sleeps, wait on a context-aware timer (select on ctx.Done plus time.After) so the wait is cancellable (HRG 6). Justify deliberate pacing with a targeted nolint
+        - pattern: InsecureSkipVerify
+          msg: TLS verification must stay on. Sanctioned exceptions carry a targeted nolint with justification
+    govet:
+      enable-all: true
+    gocritic:
+      enabled-checks:
+        # correctness
+        - badLock
+        - badSorting
+        - builtinShadowDecl
+        - externalErrorReassign
+        - nilValReturn
+        - sloppyReassign
+        - sortSlice
+        - sprintfQuotedString
+        - sqlQuery
+        - syncMapLoadAndDelete
+        - truncateCmp
+        - unnecessaryDefer
+        - weakCond
+        # performance
+        - appendCombine
+        - indexAlloc
+        - rangeExprCopy
+        - rangeValCopy
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - forbidigo
+          - gosec
+          - noctx
+          - unparam
+          - forcetypeassert
+          - sloglint
+        path: _test\.go
+      - linters:
+          - revive
+        text: 'unused-parameter'
+      - linters:
+          - govet
+        text: 'fieldalignment'
+      - linters:
+          - govet
+        text: 'declaration of "err" shadows'
+      # hugeParam suppressed. Changing value-to-pointer signatures breaks
+      # interfaces and cascades across the codebase. Profile first, then tune
+      # hot structs by hand (HRG 9.1).
+      - linters:
+          - gocritic
+        text: 'hugeParam'
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

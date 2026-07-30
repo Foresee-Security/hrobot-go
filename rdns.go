@@ -1,15 +1,15 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Foresee-Security/hrobot-go/models"
 )
 
-func (c *Client) RDnsGetList() ([]models.Rdns, error) {
+func (c *Client) RDnsGetList(ctx context.Context) ([]models.Rdns, error) {
 	url := c.baseURL + "/rdns"
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -28,18 +28,18 @@ func (c *Client) RDnsGetList() ([]models.Rdns, error) {
 	return data, nil
 }
 
-func (c *Client) RDnsGet(ip string) (*models.Rdns, error) {
-	url := c.baseURL + fmt.Sprintf("/rdns/%s", ip)
-	bytes, err := c.doGetRequest(url)
+func (c *Client) RDnsGet(ctx context.Context, ip string) (*models.Rdns, error) {
+	url := c.baseURL + "/rdns/" + ip
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 
-	var rDnsResp models.RdnsResponse
-	err = json.Unmarshal(bytes, &rDnsResp)
+	var rDNSResp models.RdnsResponse
+	err = json.Unmarshal(bytes, &rDNSResp)
 	if err != nil {
 		return nil, err
 	}
 
-	return &rDnsResp.Rdns, nil
+	return &rDNSResp.Rdns, nil
 }

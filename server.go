@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	neturl "net/url"
@@ -8,9 +9,9 @@ import (
 	"github.com/Foresee-Security/hrobot-go/models"
 )
 
-func (c *Client) ServerGetList() ([]models.Server, error) {
+func (c *Client) ServerGetList(ctx context.Context) ([]models.Server, error) {
 	url := c.baseURL + "/server"
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -21,17 +22,17 @@ func (c *Client) ServerGetList() ([]models.Server, error) {
 		return nil, err
 	}
 
-	var data []models.Server
-	for _, server := range servers {
-		data = append(data, server.Server)
+	data := make([]models.Server, 0, len(servers))
+	for i := range servers {
+		data = append(data, servers[i].Server)
 	}
 
 	return data, nil
 }
 
-func (c *Client) ServerGet(id int) (*models.Server, error) {
+func (c *Client) ServerGet(ctx context.Context, id int) (*models.Server, error) {
 	url := c.baseURL + fmt.Sprintf("/server/%v", id)
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +46,13 @@ func (c *Client) ServerGet(id int) (*models.Server, error) {
 	return &serverResp.Server, nil
 }
 
-func (c *Client) ServerSetName(id int, input *models.ServerSetNameInput) (*models.Server, error) {
+func (c *Client) ServerSetName(ctx context.Context, id int, input *models.ServerSetNameInput) (*models.Server, error) {
 	url := c.baseURL + fmt.Sprintf("/server/%v", id)
 
 	formData := neturl.Values{}
 	formData.Set("server_name", input.Name)
 
-	bytes, err := c.doPostFormRequest(url, formData)
+	bytes, err := c.doPostFormRequest(ctx, url, formData)
 	if err != nil {
 		return nil, err
 	}
@@ -65,10 +66,10 @@ func (c *Client) ServerSetName(id int, input *models.ServerSetNameInput) (*model
 	return &serverResp.Server, nil
 }
 
-func (c *Client) ServerReverse(id int) (*models.Cancellation, error) {
+func (c *Client) ServerReverse(ctx context.Context, id int) (*models.Cancellation, error) {
 	url := c.baseURL + fmt.Sprintf("/server/%v/reversal", id)
 
-	bytes, err := c.doPostFormRequest(url, nil)
+	bytes, err := c.doPostFormRequest(ctx, url, nil)
 	if err != nil {
 		return nil, err
 	}

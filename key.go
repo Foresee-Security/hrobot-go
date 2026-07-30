@@ -1,15 +1,16 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	neturl "net/url"
 
 	"github.com/Foresee-Security/hrobot-go/models"
 )
 
-func (c *Client) KeyGetList() ([]models.Key, error) {
+func (c *Client) KeyGetList(ctx context.Context) ([]models.Key, error) {
 	url := c.baseURL + "/key"
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -28,14 +29,14 @@ func (c *Client) KeyGetList() ([]models.Key, error) {
 	return data, nil
 }
 
-func (c *Client) KeySet(input *models.KeySetInput) (*models.Key, error) {
+func (c *Client) KeySet(ctx context.Context, input *models.KeySetInput) (*models.Key, error) {
 	url := c.baseURL + "/key"
 
 	formData := neturl.Values{}
 	formData.Set("name", input.Name)
 	formData.Set("data", input.Data)
 
-	bytes, err := c.doPostFormRequest(url, formData)
+	bytes, err := c.doPostFormRequest(ctx, url, formData)
 	if err != nil {
 		return nil, err
 	}

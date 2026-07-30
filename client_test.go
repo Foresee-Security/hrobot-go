@@ -1,8 +1,7 @@
 package client_test
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,7 +30,7 @@ func (s *ClientSuite) TestSetDefaultUserAgent(c *C) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqUserAgent := r.Header.Get("User-Agent")
 		robotClient := client.NewBasicAuthClient("user", "pass")
-		c.Assert(reqUserAgent, Equals, fmt.Sprintf("hrobot-client/%s", robotClient.GetVersion()))
+		c.Assert(reqUserAgent, Equals, "hrobot-client/"+robotClient.GetVersion())
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -39,7 +38,7 @@ func (s *ClientSuite) TestSetDefaultUserAgent(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/server_list.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/server_list.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -50,7 +49,7 @@ func (s *ClientSuite) TestSetDefaultUserAgent(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerGetList()
+	_, err := robotClient.ServerGetList(context.Background())
 	c.Assert(err, IsNil)
 }
 
@@ -66,7 +65,7 @@ func (s *ClientSuite) TestSetCustomUserAgent(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/server_list.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/server_list.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -78,7 +77,7 @@ func (s *ClientSuite) TestSetCustomUserAgent(c *C) {
 	robotClient.SetUserAgent(expectedUserAgent)
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerGetList()
+	_, err := robotClient.ServerGetList(context.Background())
 	c.Assert(err, IsNil)
 }
 
@@ -86,7 +85,7 @@ func (s *ClientSuite) TestGetInvalidURL(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL("http://Not a valid URL")
 
-	_, err := robotClient.ServerGetList()
+	_, err := robotClient.ServerGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -98,7 +97,7 @@ func (s *ClientSuite) TestPostInvalidURL(c *C) {
 		Name: "server-name-123456",
 	}
 
-	_, err := robotClient.ServerSetName(testServerID, input)
+	_, err := robotClient.ServerSetName(context.Background(), testServerID, input)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -106,6 +105,6 @@ func (s *ClientSuite) TestGetNonExistentURL(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL("http://DoesNotExist.nl2go")
 
-	_, err := robotClient.ServerGetList()
+	_, err := robotClient.ServerGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }

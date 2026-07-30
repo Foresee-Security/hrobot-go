@@ -1,8 +1,8 @@
 package client_test
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,7 +21,7 @@ func (s *ClientSuite) TestBootRescueGetInactiveSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_rescue_get_inactive.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_get_inactive.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -32,7 +32,7 @@ func (s *ClientSuite) TestBootRescueGetInactiveSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	rescue, err := robotClient.BootRescueGet(testServerID)
+	rescue, err := robotClient.BootRescueGet(context.Background(), testServerID)
 	c.Assert(err, IsNil)
 	c.Assert(rescue.ServerNumber, Equals, testServerID)
 }
@@ -50,7 +50,7 @@ func (s *ClientSuite) TestBootRescueGetGetInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.BootRescueGet(testServerID)
+	_, err := robotClient.BootRescueGet(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -63,7 +63,7 @@ func (s *ClientSuite) TestBootRescueGetServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.BootRescueGet(testServerID)
+	_, err := robotClient.BootRescueGet(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -75,7 +75,7 @@ func (s *ClientSuite) TestBootRescueGetActiveSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_rescue_get_active.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_get_active.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -86,7 +86,7 @@ func (s *ClientSuite) TestBootRescueGetActiveSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	rescue, err := robotClient.BootRescueGet(testServerID)
+	rescue, err := robotClient.BootRescueGet(context.Background(), testServerID)
 	c.Assert(err, IsNil)
 	c.Assert(rescue.ServerNumber, Equals, testServerID)
 }
@@ -99,7 +99,7 @@ func (s *ClientSuite) TestBootRescueDeleteSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_rescue_delete.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_delete.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -110,7 +110,7 @@ func (s *ClientSuite) TestBootRescueDeleteSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	rescue, err := robotClient.BootRescueDelete(testServerID)
+	rescue, err := robotClient.BootRescueDelete(context.Background(), testServerID)
 	c.Assert(err, IsNil)
 	c.Assert(rescue.ServerNumber, Equals, testServerID)
 }
@@ -120,7 +120,7 @@ func (s *ClientSuite) TestBootRescueSetSuccess(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "arch=64&os=linux")
 
@@ -130,7 +130,7 @@ func (s *ClientSuite) TestBootRescueSetSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_rescue_set.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_set.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -146,7 +146,7 @@ func (s *ClientSuite) TestBootRescueSetSuccess(c *C) {
 		Arch: 64,
 	}
 
-	rescue, err := robotClient.BootRescueSet(testServerID, input)
+	rescue, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
 	c.Assert(err, IsNil)
 	c.Assert(rescue.ServerNumber, Equals, testServerID)
 	c.Assert(len(rescue.AuthorizedKey), Equals, 0)
@@ -157,7 +157,7 @@ func (s *ClientSuite) TestBootRescueSetWithKeySuccess(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "arch=64&authorized_key=fi%3Ang%3Aer%3Apr%3Ain%3At0%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00&os=linux")
 
@@ -167,7 +167,7 @@ func (s *ClientSuite) TestBootRescueSetWithKeySuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_rescue_set_with_key.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_set_with_key.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -184,7 +184,7 @@ func (s *ClientSuite) TestBootRescueSetWithKeySuccess(c *C) {
 		AuthorizedKey: "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00",
 	}
 
-	rescue, err := robotClient.BootRescueSet(testServerID, input)
+	rescue, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
 	c.Assert(err, IsNil)
 	c.Assert(len(rescue.AuthorizedKey), Equals, 1)
 	c.Assert(rescue.AuthorizedKey[0].Key.Fingerprint, Equals, "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00")
@@ -195,7 +195,7 @@ func (s *ClientSuite) TestBootRescueSetInvalidResponse(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "arch=64&os=linux")
 
@@ -215,7 +215,7 @@ func (s *ClientSuite) TestBootRescueSetInvalidResponse(c *C) {
 		Arch: 64,
 	}
 
-	_, err := robotClient.BootRescueSet(testServerID, input)
+	_, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -233,7 +233,7 @@ func (s *ClientSuite) TestBootRescueSetServerError(c *C) {
 		Arch: 64,
 	}
 
-	_, err := robotClient.BootRescueSet(testServerID, input)
+	_, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -245,7 +245,7 @@ func (s *ClientSuite) TestBootLinuxGetInactiveSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_linux_get_inactive.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_get_inactive.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -256,7 +256,7 @@ func (s *ClientSuite) TestBootLinuxGetInactiveSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	linux, err := robotClient.BootLinuxGet(testServerID)
+	linux, err := robotClient.BootLinuxGet(context.Background(), testServerID)
 	c.Assert(err, IsNil)
 	c.Assert(linux.ServerNumber, Equals, testServerID)
 }
@@ -274,7 +274,7 @@ func (s *ClientSuite) TestBootLinuxGetGetInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.BootLinuxGet(testServerID)
+	_, err := robotClient.BootLinuxGet(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -287,7 +287,7 @@ func (s *ClientSuite) TestBootLinuxGetServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.BootLinuxGet(testServerID)
+	_, err := robotClient.BootLinuxGet(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -299,7 +299,7 @@ func (s *ClientSuite) TestBootLinuxDeleteSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_linux_delete.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_delete.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -310,7 +310,7 @@ func (s *ClientSuite) TestBootLinuxDeleteSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	linux, err := robotClient.BootLinuxDelete(testServerID)
+	linux, err := robotClient.BootLinuxDelete(context.Background(), testServerID)
 	c.Assert(err, IsNil)
 	c.Assert(linux.ServerNumber, Equals, testServerID)
 }
@@ -320,7 +320,7 @@ func (s *ClientSuite) TestBootLinuxSetSuccess(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "arch=32&dist=CentOS+5.5+minimal&lang=en")
 
@@ -330,7 +330,7 @@ func (s *ClientSuite) TestBootLinuxSetSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_linux_set.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_set.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -347,7 +347,7 @@ func (s *ClientSuite) TestBootLinuxSetSuccess(c *C) {
 		Lang: "en",
 	}
 
-	linux, err := robotClient.BootLinuxSet(testServerID, input)
+	linux, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
 	c.Assert(err, IsNil)
 	c.Assert(linux.ServerNumber, Equals, testServerID)
 	c.Assert(len(linux.AuthorizedKey), Equals, 0)
@@ -358,7 +358,7 @@ func (s *ClientSuite) TestBootLinuxSetWithKeySuccess(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "arch=32&authorized_key=fi%3Ang%3Aer%3Apr%3Ain%3At0%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00&dist=CentOS+5.5+minimal&lang=en")
 
@@ -368,7 +368,7 @@ func (s *ClientSuite) TestBootLinuxSetWithKeySuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/boot_linux_set_with_key.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_set_with_key.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -386,7 +386,7 @@ func (s *ClientSuite) TestBootLinuxSetWithKeySuccess(c *C) {
 		AuthorizedKey: "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00",
 	}
 
-	linux, err := robotClient.BootLinuxSet(testServerID, input)
+	linux, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
 	c.Assert(err, IsNil)
 	c.Assert(len(linux.AuthorizedKey), Equals, 1)
 	c.Assert(linux.AuthorizedKey[0].Key.Fingerprint, Equals, "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00")
@@ -397,7 +397,7 @@ func (s *ClientSuite) TestBootLinuxSetInvalidResponse(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "arch=32&dist=CentOS+5.5+minimal&lang=en")
 
@@ -417,7 +417,7 @@ func (s *ClientSuite) TestBootLinuxSetInvalidResponse(c *C) {
 		Arch: 32,
 		Lang: "en",
 	}
-	_, err := robotClient.BootLinuxSet(testServerID, input)
+	_, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -436,6 +436,6 @@ func (s *ClientSuite) TestBootLinuxSetServerError(c *C) {
 		Lang: "en",
 	}
 
-	_, err := robotClient.BootLinuxSet(testServerID, input)
+	_, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
 	c.Assert(err, Not(IsNil))
 }

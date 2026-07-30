@@ -1,8 +1,7 @@
 package client_test
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +18,7 @@ func (s *ClientSuite) TestRDnsGetListSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/rdns_list.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/rdns_list.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -30,7 +29,7 @@ func (s *ClientSuite) TestRDnsGetListSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	rdnsList, err := robotClient.RDnsGetList()
+	rdnsList, err := robotClient.RDnsGetList(context.Background())
 	c.Assert(err, IsNil)
 	c.Assert(len(rdnsList), Equals, 2)
 	c.Assert(rdnsList[0].IP, Equals, testIP)
@@ -50,7 +49,7 @@ func (s *ClientSuite) TestRDnsGetListInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.RDnsGetList()
+	_, err := robotClient.RDnsGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -63,7 +62,7 @@ func (s *ClientSuite) TestRDnsGetListServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.RDnsGetList()
+	_, err := robotClient.RDnsGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -75,7 +74,7 @@ func (s *ClientSuite) TestRDnsGetSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/rdns_get.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/rdns_get.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -86,7 +85,7 @@ func (s *ClientSuite) TestRDnsGetSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	rdns, err := robotClient.RDnsGet(testIP)
+	rdns, err := robotClient.RDnsGet(context.Background(), testIP)
 	c.Assert(err, IsNil)
 	c.Assert(rdns.IP, Equals, testIP)
 }
@@ -104,7 +103,7 @@ func (s *ClientSuite) TestRDnsGetInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.RDnsGet(testIP)
+	_, err := robotClient.RDnsGet(context.Background(), testIP)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -117,6 +116,6 @@ func (s *ClientSuite) TestRDnsGetServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.RDnsGet(testIP)
+	_, err := robotClient.RDnsGet(context.Background(), testIP)
 	c.Assert(err, Not(IsNil))
 }

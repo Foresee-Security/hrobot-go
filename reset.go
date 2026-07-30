@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	neturl "net/url"
@@ -8,9 +9,9 @@ import (
 	"github.com/Foresee-Security/hrobot-go/models"
 )
 
-func (c *Client) ResetGet(id int) (*models.Reset, error) {
+func (c *Client) ResetGet(ctx context.Context, id int) (*models.Reset, error) {
 	url := c.baseURL + fmt.Sprintf("/reset/%v", id)
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -24,13 +25,13 @@ func (c *Client) ResetGet(id int) (*models.Reset, error) {
 	return &resetResp.Reset, nil
 }
 
-func (c *Client) ResetSet(id int, input *models.ResetSetInput) (*models.ResetPost, error) {
+func (c *Client) ResetSet(ctx context.Context, id int, input *models.ResetSetInput) (*models.ResetPost, error) {
 	url := c.baseURL + fmt.Sprintf("/reset/%v", id)
 
 	formData := neturl.Values{}
 	formData.Set("type", input.Type)
 
-	bytes, err := c.doPostFormRequest(url, formData)
+	bytes, err := c.doPostFormRequest(ctx, url, formData)
 	if err != nil {
 		return nil, err
 	}

@@ -1,8 +1,8 @@
 package client_test
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,7 +20,7 @@ func (s *ClientSuite) TestKeyListSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/key_list.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/key_list.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -31,7 +31,7 @@ func (s *ClientSuite) TestKeyListSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	keys, err := robotClient.KeyGetList()
+	keys, err := robotClient.KeyGetList(context.Background())
 	c.Assert(err, IsNil)
 	c.Assert(len(keys), Equals, 2)
 }
@@ -49,7 +49,7 @@ func (s *ClientSuite) TestKeyListInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.KeyGetList()
+	_, err := robotClient.KeyGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -62,7 +62,7 @@ func (s *ClientSuite) TestKeyListServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.KeyGetList()
+	_, err := robotClient.KeyGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -71,7 +71,7 @@ func (s *ClientSuite) TestKeySetSuccess(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "data=ssh-rsa+AAAAB3NzaC1yc%2B...&name=NewKey")
 
@@ -81,7 +81,7 @@ func (s *ClientSuite) TestKeySetSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/key_set.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/key_set.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -97,7 +97,7 @@ func (s *ClientSuite) TestKeySetSuccess(c *C) {
 		Data: "ssh-rsa AAAAB3NzaC1yc+...",
 	}
 
-	linux, err := robotClient.KeySet(input)
+	linux, err := robotClient.KeySet(context.Background(), input)
 	c.Assert(err, IsNil)
 	c.Assert(linux.Name, Equals, "NewKey")
 	c.Assert(linux.Data, Equals, "ssh-rsa AAAAB3NzaC1yc+...")

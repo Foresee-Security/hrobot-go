@@ -1,14 +1,15 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/Foresee-Security/hrobot-go/models"
 )
 
-func (c *Client) IPGetList() ([]models.IP, error) {
+func (c *Client) IPGetList(ctx context.Context) ([]models.IP, error) {
 	url := c.baseURL + "/ip"
-	bytes, err := c.doGetRequest(url)
+	bytes, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -19,9 +20,9 @@ func (c *Client) IPGetList() ([]models.IP, error) {
 		return nil, err
 	}
 
-	var data []models.IP
-	for _, ip := range ips {
-		data = append(data, ip.IP)
+	data := make([]models.IP, 0, len(ips))
+	for i := range ips {
+		data = append(data, ips[i].IP)
 	}
 
 	return data, nil

@@ -1,8 +1,8 @@
 package client_test
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,7 +20,7 @@ func (s *ClientSuite) TestServerGetListSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/server_list.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/server_list.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -31,7 +31,7 @@ func (s *ClientSuite) TestServerGetListSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	servers, err := robotClient.ServerGetList()
+	servers, err := robotClient.ServerGetList(context.Background())
 	c.Assert(err, IsNil)
 	c.Assert(len(servers), Equals, 2)
 	c.Assert(servers[0].ServerNumber, Equals, testServerID)
@@ -51,7 +51,7 @@ func (s *ClientSuite) TestServerGetListInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerGetList()
+	_, err := robotClient.ServerGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -64,7 +64,7 @@ func (s *ClientSuite) TestServerGetListServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerGetList()
+	_, err := robotClient.ServerGetList(context.Background())
 	c.Assert(err, Not(IsNil))
 }
 
@@ -76,7 +76,7 @@ func (s *ClientSuite) TestServerGetSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/server_get.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/server_get.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -87,7 +87,7 @@ func (s *ClientSuite) TestServerGetSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	server, err := robotClient.ServerGet(testServerID)
+	server, err := robotClient.ServerGet(context.Background(), testServerID)
 	c.Assert(err, IsNil)
 	c.Assert(server.ServerNumber, Equals, testServerID)
 }
@@ -105,7 +105,7 @@ func (s *ClientSuite) TestServerGetInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerGet(testServerID)
+	_, err := robotClient.ServerGet(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -118,7 +118,7 @@ func (s *ClientSuite) TestServerGetServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerGet(testServerID)
+	_, err := robotClient.ServerGet(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -130,7 +130,7 @@ func (s *ClientSuite) TestServerGetNotFound(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/server_get_404.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/server_get_404.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -141,7 +141,7 @@ func (s *ClientSuite) TestServerGetNotFound(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerGet(testServerID)
+	_, err := robotClient.ServerGet(context.Background(), testServerID)
 	c.Assert(err, NotNil)
 }
 
@@ -150,7 +150,7 @@ func (s *ClientSuite) TestServerSetNameSuccess(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "server_name=mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456")
 
@@ -160,7 +160,7 @@ func (s *ClientSuite) TestServerSetNameSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/server_get.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/server_get.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -175,7 +175,7 @@ func (s *ClientSuite) TestServerSetNameSuccess(c *C) {
 		Name: "mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456",
 	}
 
-	server, err := robotClient.ServerSetName(testServerID, input)
+	server, err := robotClient.ServerSetName(context.Background(), testServerID, input)
 	c.Assert(err, IsNil)
 	c.Assert(server.ServerNumber, Equals, testServerID)
 }
@@ -185,7 +185,7 @@ func (s *ClientSuite) TestServerSetNameInvalidResponse(c *C) {
 		reqContentType := r.Header.Get("Content-Type")
 		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
 
-		body, bodyErr := ioutil.ReadAll(r.Body)
+		body, bodyErr := io.ReadAll(r.Body)
 		c.Assert(bodyErr, IsNil)
 		c.Assert(string(body), Equals, "server_name=mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456")
 
@@ -204,7 +204,7 @@ func (s *ClientSuite) TestServerSetNameInvalidResponse(c *C) {
 		Name: "mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456",
 	}
 
-	_, err := robotClient.ServerSetName(testServerID, input)
+	_, err := robotClient.ServerSetName(context.Background(), testServerID, input)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -221,7 +221,7 @@ func (s *ClientSuite) TestServerSetNameServerError(c *C) {
 		Name: "mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456",
 	}
 
-	_, err := robotClient.ServerSetName(testServerID, input)
+	_, err := robotClient.ServerSetName(context.Background(), testServerID, input)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -233,7 +233,7 @@ func (s *ClientSuite) TestServerReverseSuccess(c *C) {
 		pwd, pwdErr := os.Getwd()
 		c.Assert(pwdErr, IsNil)
 
-		data, readErr := ioutil.ReadFile(fmt.Sprintf("%s/test/response/server_reverse.json", pwd))
+		data, readErr := os.ReadFile(pwd + "/test/response/server_reverse.json")
 		c.Assert(readErr, IsNil)
 
 		_, err := w.Write(data)
@@ -244,7 +244,7 @@ func (s *ClientSuite) TestServerReverseSuccess(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	cancellation, err := robotClient.ServerReverse(testServerID)
+	cancellation, err := robotClient.ServerReverse(context.Background(), testServerID)
 	c.Assert(err, IsNil)
 	c.Assert(cancellation.ServerNumber, Equals, testServerID)
 	c.Assert(cancellation.CancellationDate, Equals, "2014-04-15")
@@ -263,7 +263,7 @@ func (s *ClientSuite) TestServerReverseInvalidResponse(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerReverse(testServerID)
+	_, err := robotClient.ServerReverse(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }
 
@@ -276,6 +276,6 @@ func (s *ClientSuite) TestServerReverseServerError(c *C) {
 	robotClient := client.NewBasicAuthClient("user", "pass")
 	robotClient.SetBaseURL(ts.URL)
 
-	_, err := robotClient.ServerReverse(testServerID)
+	_, err := robotClient.ServerReverse(context.Background(), testServerID)
 	c.Assert(err, Not(IsNil))
 }

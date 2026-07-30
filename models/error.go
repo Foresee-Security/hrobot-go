@@ -1,6 +1,9 @@
 package models
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type ErrorCode string
 
@@ -50,8 +53,13 @@ type ErrorResponse struct {
 	Error Error `json:"error"`
 }
 
-// IsError returns whether err is an API error with the given error code.
+// IsError reports whether err, or any error it wraps, is an API error carrying
+// the given code.
+//
+// This unwraps rather than type-asserting directly. A caller that adds context
+// with %w is doing the right thing, and it must not cause the code match to
+// silently start returning false.
 func IsError(err error, code ErrorCode) bool {
-	apiErr, ok := err.(Error)
-	return ok && apiErr.Code == code
+	var apiErr Error
+	return errors.As(err, &apiErr) && apiErr.Code == code
 }
