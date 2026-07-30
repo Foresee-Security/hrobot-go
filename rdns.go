@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 func (c *Client) RDnsGetList() ([]models.Rdns, error) {
@@ -29,7 +29,7 @@ func (c *Client) RDnsGetList() ([]models.Rdns, error) {
 }
 
 func (c *Client) RDnsGet(ip string) (*models.Rdns, error) {
-	url := fmt.Sprintf(c.baseURL+"/rdns/%s", ip)
+	url := c.baseURL + fmt.Sprintf("/rdns/%s", ip)
 	bytes, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err

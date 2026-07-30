@@ -6,11 +6,11 @@ import (
 	neturl "net/url"
 	"strconv"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 func (c *Client) BootRescueGet(id int) (*models.Rescue, error) {
-	url := fmt.Sprintf(c.baseURL+"/boot/%v/rescue", id)
+	url := c.baseURL + fmt.Sprintf("/boot/%v/rescue", id)
 	bytes, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -26,7 +26,7 @@ func (c *Client) BootRescueGet(id int) (*models.Rescue, error) {
 }
 
 func (c *Client) BootRescueSet(id int, input *models.RescueSetInput) (*models.Rescue, error) {
-	url := fmt.Sprintf(c.baseURL+"/boot/%v/rescue", id)
+	url := c.baseURL + fmt.Sprintf("/boot/%v/rescue", id)
 
 	formData := neturl.Values{}
 	formData.Set("os", input.OS)
@@ -52,7 +52,7 @@ func (c *Client) BootRescueSet(id int, input *models.RescueSetInput) (*models.Re
 }
 
 func (c *Client) BootRescueDelete(id int) (*models.Rescue, error) {
-	url := fmt.Sprintf(c.baseURL+"/boot/%v/rescue", id)
+	url := c.baseURL + fmt.Sprintf("/boot/%v/rescue", id)
 	bytes, err := c.doDeleteRequest(url)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func (c *Client) BootRescueDelete(id int) (*models.Rescue, error) {
 }
 
 func (c *Client) BootLinuxGet(id int) (*models.Linux, error) {
-	url := fmt.Sprintf(c.baseURL+"/boot/%v/linux", id)
+	url := c.baseURL + fmt.Sprintf("/boot/%v/linux", id)
 	bytes, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (c *Client) BootLinuxGet(id int) (*models.Linux, error) {
 }
 
 func (c *Client) BootLinuxSet(id int, input *models.LinuxSetInput) (*models.Linux, error) {
-	url := fmt.Sprintf(c.baseURL+"/boot/%v/linux", id)
+	url := c.baseURL + fmt.Sprintf("/boot/%v/linux", id)
 
 	formData := neturl.Values{}
 	formData.Set("dist", input.Dist)
@@ -113,7 +113,7 @@ func (c *Client) BootLinuxSet(id int, input *models.LinuxSetInput) (*models.Linu
 }
 
 func (c *Client) BootLinuxDelete(id int) (*models.Linux, error) {
-	url := fmt.Sprintf(c.baseURL+"/boot/%v/linux", id)
+	url := c.baseURL + fmt.Sprintf("/boot/%v/linux", id)
 	bytes, err := c.doDeleteRequest(url)
 	if err != nil {
 		return nil, err

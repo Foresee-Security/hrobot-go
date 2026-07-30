@@ -1,6 +1,6 @@
 package client
 
-import "github.com/syself/hrobot-go/models"
+import "github.com/Foresee-Security/hrobot-go/models"
 
 type RobotClient interface {
 	SetBaseURL(baseURL string)

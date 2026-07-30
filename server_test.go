@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"os"
 
-	client "github.com/syself/hrobot-go"
-	"github.com/syself/hrobot-go/models"
+	client "github.com/Foresee-Security/hrobot-go"
+	"github.com/Foresee-Security/hrobot-go/models"
 	. "gopkg.in/check.v1"
 )
 

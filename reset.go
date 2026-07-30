@@ -5,11 +5,11 @@ import (
 	"fmt"
 	neturl "net/url"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 func (c *Client) ResetGet(id int) (*models.Reset, error) {
-	url := fmt.Sprintf(c.baseURL+"/reset/%v", id)
+	url := c.baseURL + fmt.Sprintf("/reset/%v", id)
 	bytes, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -25,7 +25,7 @@ func (c *Client) ResetGet(id int) (*models.Reset, error) {
 }
 
 func (c *Client) ResetSet(id int, input *models.ResetSetInput) (*models.ResetPost, error) {
-	url := fmt.Sprintf(c.baseURL+"/reset/%v", id)
+	url := c.baseURL + fmt.Sprintf("/reset/%v", id)
 
 	formData := neturl.Values{}
 	formData.Set("type", input.Type)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	neturl "net/url"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 func (c *Client) ServerGetList() ([]models.Server, error) {
@@ -30,7 +30,7 @@ func (c *Client) ServerGetList() ([]models.Server, error) {
 }
 
 func (c *Client) ServerGet(id int) (*models.Server, error) {
-	url := fmt.Sprintf(c.baseURL+"/server/%v", id)
+	url := c.baseURL + fmt.Sprintf("/server/%v", id)
 	bytes, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (c *Client) ServerGet(id int) (*models.Server, error) {
 }
 
 func (c *Client) ServerSetName(id int, input *models.ServerSetNameInput) (*models.Server, error) {
-	url := fmt.Sprintf(c.baseURL+"/server/%v", id)
+	url := c.baseURL + fmt.Sprintf("/server/%v", id)
 
 	formData := neturl.Values{}
 	formData.Set("server_name", input.Name)
@@ -66,7 +66,7 @@ func (c *Client) ServerSetName(id int, input *models.ServerSetNameInput) (*model
 }
 
 func (c *Client) ServerReverse(id int) (*models.Cancellation, error) {
-	url := fmt.Sprintf(c.baseURL+"/server/%v/reversal", id)
+	url := c.baseURL + fmt.Sprintf("/server/%v/reversal", id)
 
 	bytes, err := c.doPostFormRequest(url, nil)
 	if err != nil {

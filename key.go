@@ -2,10 +2,9 @@ package client
 
 import (
 	"encoding/json"
-	"fmt"
 	neturl "net/url"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 func (c *Client) KeyGetList() ([]models.Key, error) {
@@ -30,7 +29,7 @@ func (c *Client) KeyGetList() ([]models.Key, error) {
 }
 
 func (c *Client) KeySet(input *models.KeySetInput) (*models.Key, error) {
-	url := fmt.Sprintf(c.baseURL + "/key")
+	url := c.baseURL + "/key"
 
 	formData := neturl.Values{}
 	formData.Set("name", input.Name)

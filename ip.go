@@ -3,7 +3,7 @@ package client
 import (
 	"encoding/json"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 func (c *Client) IPGetList() ([]models.IP, error) {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 func (c *Client) FailoverGetList() ([]models.Failover, error) {
@@ -29,7 +29,7 @@ func (c *Client) FailoverGetList() ([]models.Failover, error) {
 }
 
 func (c *Client) FailoverGet(ip string) (*models.Failover, error) {
-	url := fmt.Sprintf(c.baseURL+"/failover/%s", ip)
+	url := c.baseURL + fmt.Sprintf("/failover/%s", ip)
 	bytes, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err

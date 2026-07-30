@@ -8,10 +8,10 @@ import (
 	"os"
 	"testing"
 
-	client "github.com/syself/hrobot-go"
+	client "github.com/Foresee-Security/hrobot-go"
 	. "gopkg.in/check.v1"
 
-	"github.com/syself/hrobot-go/models"
+	"github.com/Foresee-Security/hrobot-go/models"
 )
 
 // Hook up gocheck into the "go test" runner.

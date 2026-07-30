@@ -2,14 +2,52 @@
 
 Package hrobot-go is a library for the Hetzner Robot Webservice.
 
-The library’s documentation is available at [GoDoc](https://godoc.org/github.com/syself/hrobot-go),
-the public API documentation is available at [robot.your-server.de](https://robot.your-server.de/doc/webservice/en.html).
+The public API documentation is available at
+[robot.your-server.de](https://robot.your-server.de/doc/webservice/en.html).
 
-## Infos about fork
+## About this fork
 
-This fork is based on the repo of nl2go. The original repo implemented the important parts of Hetzner Robot API, but has not been updated since 2019. This work has the goal to keep up with API changes on Hetzner side and to implement additional functions that Hetzner Robot offers.
+This is **Foresee Security's actively developed fork**, and it is expected to
+diverge from upstream rather than track it closely. We use it in production to
+drive bare-metal analysis hosts, so we are treating it as code we own: we will
+extend the API surface where the Robot Webservice offers something this library
+does not yet expose, and we will change existing behaviour where it does not
+meet our reliability or security bar.
 
-Contributions and feature requests are very welcome!
+The lineage is nl2go, then [syself](https://github.com/syself/hrobot-go), then
+here. Upstream is tracked as a git remote and we will merge from it where that
+is useful, but we are not constrained by it.
+
+Note the module path is `github.com/Foresee-Security/hrobot-go`. Import that,
+not the upstream path.
+
+### Known gaps we intend to close
+
+Measured against the current tree rather than assumed, in rough priority order:
+
+1. **No `context.Context` on any call.** Every request goes through
+   `http.NewRequest`, so nothing can be cancelled and no call carries a
+   deadline. A wedged request blocks its caller indefinitely.
+2. **The default HTTP client has no timeout.** `NewBasicAuthClient` builds a
+   bare `&http.Client{}`, which in Go means no timeout at all. Combined with
+   point 1, a single unresponsive request can hang a caller forever.
+3. **Credentials are plain exported fields.** `Client.Username` and
+   `Client.Password` are readable and, more importantly, printable. Any
+   `%+v` of a client writes the password wherever that lands. Redaction
+   belongs on the type.
+4. **Response bodies are read unbounded.** `io.ReadAll` with no ceiling.
+5. **Missing endpoints.** Firewall (including the `rules[output]` egress
+   direction), vSwitch, Storage Box, traffic, subnet, and the whole ordering
+   tree are absent.
+6. **Test framework dependency.** Tests pull `gopkg.in/check.v1` rather than
+   using the standard library.
+
+The `go` directive has been moved from 1.17 to 1.26 to match the toolchain we
+build against.
+
+Contributions and issues are welcome. Where a change is generally useful and
+not specific to how we operate, we would rather send it upstream than keep it
+here.
 
 ## Example
 
@@ -20,7 +58,7 @@ import (
     "fmt"
     "log"
 
-    client "github.com/syself/hrobot-go"
+    client "github.com/Foresee-Security/hrobot-go"
 )
 
 func main() {
@@ -35,12 +73,14 @@ func main() {
 }
 ```
 
-If you want to add instrumentation (for example to debug why you hit rate-limits of the Hetzner API)
-you can use `NewBasicAuthClientWithCustomHttpClient()` to use your own httpClient.
+To add instrumentation, for example to debug Hetzner API rate limits, use
+`NewBasicAuthClientWithCustomHttpClient()` to supply your own `http.Client`.
+Until the timeout defaults above are fixed, supplying your own client with an
+explicit timeout is also the way to avoid point 2.
 
 ## Releasing
 
-Update version number in `client.go`
+Update the version number in `client.go`.
 
 ```sh
 make test
