@@ -2,9 +2,4 @@ module github.com/Foresee-Security/hrobot-go
 
 go 1.26.0
 
-require gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-
-require (
-	github.com/kr/pretty v0.2.1 // indirect
-	github.com/kr/text v0.1.0 // indirect
-)
+toolchain go1.26.5

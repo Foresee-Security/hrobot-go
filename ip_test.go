@@ -1,69 +1,60 @@
-package client_test
+package hrobot_test
 
 import (
-	"context"
 	"net/http"
-	"net/http/httptest"
-	"os"
-
-	client "github.com/Foresee-Security/hrobot-go"
-	. "gopkg.in/check.v1"
+	"testing"
 )
 
-func (s *ClientSuite) TestIPListSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestIPGetList(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "ip_list.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/ip_list.json")
-		c.Assert(readErr, IsNil)
+	ips, err := c.IPGetList(t.Context())
+	if err != nil {
+		t.Fatalf("IPGetList: %v", err)
+	}
 
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	wantRequest(t, rec.only(t), http.MethodGet, "/ip")
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	ips, err := robotClient.IPGetList(context.Background())
-	c.Assert(err, IsNil)
-	c.Assert(len(ips), Equals, 2)
-	c.Assert(ips[0].IP, Equals, testIP)
-	c.Assert(ips[1].IP, Equals, testIP2)
-	c.Assert(ips[0].ServerNumber, Equals, testServerID)
-	c.Assert(ips[1].ServerNumber, Equals, testServerID)
+	if len(ips) != 2 {
+		t.Fatalf("got %d addresses, want 2", len(ips))
+	}
+	if ips[0].IP != testIP {
+		t.Errorf("ips[0].IP = %q, want %q", ips[0].IP, testIP)
+	}
+	if ips[1].IP != testIP2 {
+		t.Errorf("ips[1].IP = %q, want %q", ips[1].IP, testIP2)
+	}
+	if ips[0].ServerNumber != testServerID {
+		t.Errorf("ips[0].ServerNumber = %d, want %d", ips[0].ServerNumber, testServerID)
+	}
+	// The API sends "separate_mac":null, which must decode to an empty string
+	// rather than failing the listing.
+	if ips[0].SeparateMAC != "" {
+		t.Errorf("ips[0].SeparateMAC = %q, want empty", ips[0].SeparateMAC)
+	}
+	if ips[1].TrafficMonthly != 20 {
+		t.Errorf("ips[1].TrafficMonthly = %d, want 20", ips[1].TrafficMonthly)
+	}
 }
 
-func (s *ClientSuite) TestIPListInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestIPGetListInvalidJSON(t *testing.T) {
+	t.Parallel()
 
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	c, _ := newServer(t, serveBody(http.StatusOK, "invalid JSON"))
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.IPGetList(context.Background())
-	c.Assert(err, Not(IsNil))
+	if _, err := c.IPGetList(t.Context()); err == nil {
+		t.Fatal("want a decode error, got nil")
+	}
 }
 
-func (s *ClientSuite) TestIPListServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestIPGetListServerError(t *testing.T) {
+	t.Parallel()
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	c, _ := newServer(t, serveBody(http.StatusInternalServerError, ""))
 
-	_, err := robotClient.IPGetList(context.Background())
-	c.Assert(err, Not(IsNil))
+	if _, err := c.IPGetList(t.Context()); err == nil {
+		t.Fatal("want an error, got nil")
+	}
 }

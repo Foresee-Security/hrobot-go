@@ -1,441 +1,298 @@
-package client_test
+package hrobot_test
 
 import (
-	"context"
-	"io"
+	"errors"
 	"net/http"
-	"net/http/httptest"
-	"os"
+	"slices"
+	"testing"
 
-	. "gopkg.in/check.v1"
-
-	client "github.com/Foresee-Security/hrobot-go"
-	"github.com/Foresee-Security/hrobot-go/models"
+	hrobot "github.com/Foresee-Security/hrobot-go"
 )
 
-func (s *ClientSuite) TestBootRescueGetInactiveSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestBootRescueGetInactive(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "boot_rescue_get_inactive.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_get_inactive.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	rescue, err := robotClient.BootRescueGet(context.Background(), testServerID)
-	c.Assert(err, IsNil)
-	c.Assert(rescue.ServerNumber, Equals, testServerID)
-}
-
-func (s *ClientSuite) TestBootRescueGetGetInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.BootRescueGet(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestBootRescueGetServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.BootRescueGet(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestBootRescueGetActiveSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_get_active.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	rescue, err := robotClient.BootRescueGet(context.Background(), testServerID)
-	c.Assert(err, IsNil)
-	c.Assert(rescue.ServerNumber, Equals, testServerID)
-}
-
-func (s *ClientSuite) TestBootRescueDeleteSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_delete.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	rescue, err := robotClient.BootRescueDelete(context.Background(), testServerID)
-	c.Assert(err, IsNil)
-	c.Assert(rescue.ServerNumber, Equals, testServerID)
-}
-
-func (s *ClientSuite) TestBootRescueSetSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
-
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "arch=64&os=linux")
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_set.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.RescueSetInput{
-		OS:   "linux",
-		Arch: 64,
+	rescue, err := c.BootRescueGet(t.Context(), testServerID)
+	if err != nil {
+		t.Fatalf("BootRescueGet: %v", err)
 	}
 
-	rescue, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
-	c.Assert(err, IsNil)
-	c.Assert(rescue.ServerNumber, Equals, testServerID)
-	c.Assert(len(rescue.AuthorizedKey), Equals, 0)
+	wantRequest(t, rec.only(t), http.MethodGet, "/boot/321/rescue")
+
+	if rescue.Active {
+		t.Error("Active = true, want false")
+	}
+	// Inactive means the API lists every choice rather than naming one.
+	wantOS := []string{"linux", "freebsd", "vkvm"}
+	if !slices.Equal([]string(rescue.OS), wantOS) {
+		t.Errorf("OS = %v, want %v", rescue.OS, wantOS)
+	}
+	if !slices.Equal([]int(rescue.Arch), []int{64, 32}) {
+		t.Errorf("Arch = %v, want [64 32]", rescue.Arch)
+	}
+	if rescue.Password != "" {
+		t.Errorf("Password = %q, want empty for an inactive rescue system", rescue.Password)
+	}
 }
 
-func (s *ClientSuite) TestBootRescueSetWithKeySuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
+func TestBootRescueGetActive(t *testing.T) {
+	t.Parallel()
 
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "arch=64&authorized_key=fi%3Ang%3Aer%3Apr%3Ain%3At0%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00&os=linux")
+	c, _ := newServer(t, serveFixture(t, "boot_rescue_get_active.json"))
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_rescue_set_with_key.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.RescueSetInput{
-		OS:            "linux",
-		Arch:          64,
-		AuthorizedKey: "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00",
+	rescue, err := c.BootRescueGet(t.Context(), testServerID)
+	if err != nil {
+		t.Fatalf("BootRescueGet: %v", err)
 	}
 
-	rescue, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
-	c.Assert(err, IsNil)
-	c.Assert(len(rescue.AuthorizedKey), Equals, 1)
-	c.Assert(rescue.AuthorizedKey[0].Key.Fingerprint, Equals, "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00")
+	if !rescue.Active {
+		t.Error("Active = false, want true")
+	}
+	// Active means the same fields arrive as bare scalars. A one-element list
+	// is how this client presents that.
+	if !slices.Equal([]string(rescue.OS), []string{"linux"}) {
+		t.Errorf("OS = %v, want [linux]", rescue.OS)
+	}
+	if !slices.Equal([]int(rescue.Arch), []int{64}) {
+		t.Errorf("Arch = %v, want [64]", rescue.Arch)
+	}
+	if rescue.Password != "qwertz1234" {
+		t.Errorf("Password = %q, want %q", rescue.Password, "qwertz1234")
+	}
+	if len(rescue.AuthorizedKeys) != 1 || rescue.AuthorizedKeys[0].Key.Name != "admin" {
+		t.Errorf("AuthorizedKeys = %+v, want one key named admin", rescue.AuthorizedKeys)
+	}
 }
 
-func (s *ClientSuite) TestBootRescueSetInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
+func TestBootRescueSet(t *testing.T) {
+	t.Parallel()
 
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "arch=64&os=linux")
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.RescueSetInput{
-		OS:   "linux",
-		Arch: 64,
+	tests := []struct {
+		name     string
+		fixture  string
+		input    *hrobot.RescueSetInput
+		wantBody string
+	}{
+		{
+			name:     "os only",
+			fixture:  "boot_rescue_set.json",
+			input:    &hrobot.RescueSetInput{OS: "linux"},
+			wantBody: "os=linux",
+		},
+		{
+			name:     "os and arch",
+			fixture:  "boot_rescue_set.json",
+			input:    &hrobot.RescueSetInput{OS: "linux", Arch: 64},
+			wantBody: "arch=64&os=linux",
+		},
+		{
+			name:     "os and authorized key",
+			fixture:  "boot_rescue_set_with_key.json",
+			input:    &hrobot.RescueSetInput{OS: "linux", AuthorizedKey: "fingerprint"},
+			wantBody: "authorized_key=fingerprint&os=linux",
+		},
 	}
 
-	_, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
-	c.Assert(err, Not(IsNil))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, rec := newServer(t, serveFixture(t, tc.fixture))
+
+			rescue, err := c.BootRescueSet(t.Context(), testServerID, tc.input)
+			if err != nil {
+				t.Fatalf("BootRescueSet: %v", err)
+			}
+
+			got := rec.only(t)
+			wantRequest(t, got, http.MethodPost, "/boot/321/rescue")
+			if got.Body != tc.wantBody {
+				t.Errorf("body = %q, want %q", got.Body, tc.wantBody)
+			}
+			if !rescue.Active {
+				t.Error("Active = false, want true after arming")
+			}
+		})
+	}
 }
 
-func (s *ClientSuite) TestBootRescueSetServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestBootRescueDelete(t *testing.T) {
+	t.Parallel()
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	c, rec := newServer(t, serveFixture(t, "boot_rescue_delete.json"))
 
-	input := &models.RescueSetInput{
-		OS:   "linux",
-		Arch: 64,
+	rescue, err := c.BootRescueDelete(t.Context(), testServerID)
+	if err != nil {
+		t.Fatalf("BootRescueDelete: %v", err)
 	}
 
-	_, err := robotClient.BootRescueSet(context.Background(), testServerID, input)
-	c.Assert(err, Not(IsNil))
+	wantRequest(t, rec.only(t), http.MethodDelete, "/boot/321/rescue")
+
+	if rescue.Active {
+		t.Error("Active = true, want false after disarming")
+	}
 }
 
-func (s *ClientSuite) TestBootLinuxGetInactiveSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestBootLinuxGetInactive(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "boot_linux_get_inactive.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_get_inactive.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	linux, err := robotClient.BootLinuxGet(context.Background(), testServerID)
-	c.Assert(err, IsNil)
-	c.Assert(linux.ServerNumber, Equals, testServerID)
-}
-
-func (s *ClientSuite) TestBootLinuxGetGetInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.BootLinuxGet(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestBootLinuxGetServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.BootLinuxGet(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestBootLinuxDeleteSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_delete.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	linux, err := robotClient.BootLinuxDelete(context.Background(), testServerID)
-	c.Assert(err, IsNil)
-	c.Assert(linux.ServerNumber, Equals, testServerID)
-}
-
-func (s *ClientSuite) TestBootLinuxSetSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
-
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "arch=32&dist=CentOS+5.5+minimal&lang=en")
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_set.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.LinuxSetInput{
-		Dist: "CentOS 5.5 minimal",
-		Arch: 32,
-		Lang: "en",
+	linux, err := c.BootLinuxGet(t.Context(), testServerID)
+	if err != nil {
+		t.Fatalf("BootLinuxGet: %v", err)
 	}
 
-	linux, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
-	c.Assert(err, IsNil)
-	c.Assert(linux.ServerNumber, Equals, testServerID)
-	c.Assert(len(linux.AuthorizedKey), Equals, 0)
+	wantRequest(t, rec.only(t), http.MethodGet, "/boot/321/linux")
+
+	if linux.Active {
+		t.Error("Active = true, want false")
+	}
+	wantDist := []string{"CentOS 5.5 minimal", "Debian 7.8 minimal"}
+	if !slices.Equal([]string(linux.Dist), wantDist) {
+		t.Errorf("Dist = %v, want %v", linux.Dist, wantDist)
+	}
+	if !slices.Equal([]string(linux.Lang), []string{"en"}) {
+		t.Errorf("Lang = %v, want [en]", linux.Lang)
+	}
 }
 
-func (s *ClientSuite) TestBootLinuxSetWithKeySuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
+func TestBootLinuxSet(t *testing.T) {
+	t.Parallel()
 
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "arch=32&authorized_key=fi%3Ang%3Aer%3Apr%3Ain%3At0%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00%3A00&dist=CentOS+5.5+minimal&lang=en")
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/boot_linux_set_with_key.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.LinuxSetInput{
-		Dist:          "CentOS 5.5 minimal",
-		Arch:          32,
-		Lang:          "en",
-		AuthorizedKey: "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00",
+	tests := []struct {
+		name     string
+		fixture  string
+		input    *hrobot.LinuxSetInput
+		wantBody string
+	}{
+		{
+			name:     "dist and lang",
+			fixture:  "boot_linux_set.json",
+			input:    &hrobot.LinuxSetInput{Dist: "CentOS 5.5 minimal", Lang: "en"},
+			wantBody: "dist=CentOS+5.5+minimal&lang=en",
+		},
+		{
+			name:    "every field",
+			fixture: "boot_linux_set_with_key.json",
+			input: &hrobot.LinuxSetInput{
+				Dist:          "CentOS 5.5 minimal",
+				Arch:          32,
+				Lang:          "en",
+				AuthorizedKey: "fingerprint",
+			},
+			wantBody: "arch=32&authorized_key=fingerprint&dist=CentOS+5.5+minimal&lang=en",
+		},
 	}
 
-	linux, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
-	c.Assert(err, IsNil)
-	c.Assert(len(linux.AuthorizedKey), Equals, 1)
-	c.Assert(linux.AuthorizedKey[0].Key.Fingerprint, Equals, "fi:ng:er:pr:in:t0:00:00:00:00:00:00:00:00:00:00")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, rec := newServer(t, serveFixture(t, tc.fixture))
+
+			linux, err := c.BootLinuxSet(t.Context(), testServerID, tc.input)
+			if err != nil {
+				t.Fatalf("BootLinuxSet: %v", err)
+			}
+
+			got := rec.only(t)
+			wantRequest(t, got, http.MethodPost, "/boot/321/linux")
+			if got.Body != tc.wantBody {
+				t.Errorf("body = %q, want %q", got.Body, tc.wantBody)
+			}
+			if !slices.Equal([]string(linux.Dist), []string{"CentOS 5.5 minimal"}) {
+				t.Errorf("Dist = %v, want the single active distribution", linux.Dist)
+			}
+		})
+	}
 }
 
-func (s *ClientSuite) TestBootLinuxSetInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
+func TestBootLinuxDelete(t *testing.T) {
+	t.Parallel()
 
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "arch=32&dist=CentOS+5.5+minimal&lang=en")
+	c, rec := newServer(t, serveFixture(t, "boot_linux_delete.json"))
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.LinuxSetInput{
-		Dist: "CentOS 5.5 minimal",
-		Arch: 32,
-		Lang: "en",
+	linux, err := c.BootLinuxDelete(t.Context(), testServerID)
+	if err != nil {
+		t.Fatalf("BootLinuxDelete: %v", err)
 	}
-	_, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
-	c.Assert(err, Not(IsNil))
+
+	wantRequest(t, rec.only(t), http.MethodDelete, "/boot/321/linux")
+
+	if linux.Active {
+		t.Error("Active = true, want false after disarming")
+	}
 }
 
-func (s *ClientSuite) TestBootLinuxSetServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestBootMethodsValidateArgumentsLocally(t *testing.T) {
+	t.Parallel()
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.LinuxSetInput{
-		Dist: "CentOS 5.5 minimal",
-		Arch: 32,
-		Lang: "en",
+	tests := []struct {
+		name    string
+		call    func(*hrobot.Client) error
+		wantErr error
+	}{
+		{
+			name:    "BootRescueGet rejects a zero id",
+			call:    func(c *hrobot.Client) error { _, err := c.BootRescueGet(t.Context(), 0); return err },
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name:    "BootRescueDelete rejects a zero id",
+			call:    func(c *hrobot.Client) error { _, err := c.BootRescueDelete(t.Context(), 0); return err },
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name: "BootRescueSet rejects a nil input",
+			call: func(c *hrobot.Client) error {
+				_, err := c.BootRescueSet(t.Context(), testServerID, nil)
+				return err
+			},
+			wantErr: hrobot.ErrNilInput,
+		},
+		{
+			name: "BootRescueSet rejects a zero id",
+			call: func(c *hrobot.Client) error {
+				_, err := c.BootRescueSet(t.Context(), 0, &hrobot.RescueSetInput{OS: "linux"})
+				return err
+			},
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name:    "BootLinuxGet rejects a zero id",
+			call:    func(c *hrobot.Client) error { _, err := c.BootLinuxGet(t.Context(), 0); return err },
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name:    "BootLinuxDelete rejects a zero id",
+			call:    func(c *hrobot.Client) error { _, err := c.BootLinuxDelete(t.Context(), 0); return err },
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name: "BootLinuxSet rejects a nil input",
+			call: func(c *hrobot.Client) error {
+				_, err := c.BootLinuxSet(t.Context(), testServerID, nil)
+				return err
+			},
+			wantErr: hrobot.ErrNilInput,
+		},
 	}
 
-	_, err := robotClient.BootLinuxSet(context.Background(), testServerID, input)
-	c.Assert(err, Not(IsNil))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, rec := newServer(t, unreachable(t))
+
+			if err := tc.call(c); !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tc.wantErr)
+			}
+			if n := rec.count(); n != 0 {
+				t.Errorf("sent %d requests, want 0", n)
+			}
+		})
+	}
 }

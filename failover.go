@@ -1,45 +1,68 @@
-package client
+package hrobot
 
 import (
 	"context"
-	"encoding/json"
-
-	"github.com/Foresee-Security/hrobot-go/models"
+	"net/http"
 )
 
-func (c *Client) FailoverGetList(ctx context.Context) ([]models.Failover, error) {
-	url := c.baseURL + "/failover"
-	bytes, err := c.doGetRequest(ctx, url)
-	if err != nil {
-		return nil, err
-	}
-
-	var failoverList []models.FailoverResponse
-	err = json.Unmarshal(bytes, &failoverList)
-	if err != nil {
-		return nil, err
-	}
-
-	var data []models.Failover
-	for _, failover := range failoverList {
-		data = append(data, failover.Failover)
-	}
-
-	return data, nil
+// Failover is a failover address, which can be routed to any server on the
+// account and rerouted to another to survive a host failure.
+type Failover struct {
+	// IP is the failover address itself, IPv4 or IPv6.
+	IP string `json:"ip"`
+	// Netmask is the address's netmask, in dotted-quad form for IPv4 and
+	// colon-hex form for IPv6.
+	Netmask string `json:"netmask"`
+	// ServerIP is the main address of the server the failover address belongs
+	// to. This is the owning server, which is not necessarily the one traffic
+	// currently reaches.
+	ServerIP string `json:"server_ip"`
+	// ServerIPv6Net is the owning server's main IPv6 network.
+	ServerIPv6Net string `json:"server_ipv6_net"`
+	// ServerNumber is the owning server's Robot server ID.
+	ServerNumber int `json:"server_number"`
+	// ActiveServerIP is the main address of the server traffic is currently
+	// routed to. It differs from ServerIP once the address has been switched.
+	ActiveServerIP string `json:"active_server_ip"`
 }
 
-func (c *Client) FailoverGet(ctx context.Context, ip string) (*models.Failover, error) {
-	url := c.baseURL + "/failover/" + ip
-	bytes, err := c.doGetRequest(ctx, url)
+// failoverResponse is the envelope a single failover address is wrapped in.
+type failoverResponse struct {
+	Failover Failover `json:"failover"`
+}
+
+// FailoverGetList returns every failover address on the account.
+func (c *Client) FailoverGetList(ctx context.Context) ([]Failover, error) {
+	const op = "failover list"
+
+	list, err := fetch[[]failoverResponse](ctx, c, op, http.MethodGet, "/failover", nil)
 	if err != nil {
 		return nil, err
 	}
 
-	var failoverResp models.FailoverResponse
-	err = json.Unmarshal(bytes, &failoverResp)
+	addresses := make([]Failover, 0, len(list))
+	for i := range list {
+		addresses = append(addresses, list[i].Failover)
+	}
+	return addresses, nil
+}
+
+// FailoverGet returns one failover address.
+//
+// It returns [ErrEmptyIP] without contacting the API if ip is empty, because an
+// empty address would otherwise address the collection endpoint and decode a
+// list where the caller expects one address.
+func (c *Client) FailoverGet(ctx context.Context, ip string) (*Failover, error) {
+	const op = "failover get"
+
+	segment, err := ipSegment(ip)
 	if err != nil {
 		return nil, err
 	}
 
-	return &failoverResp.Failover, nil
+	resp, err := fetch[failoverResponse](ctx, c, op, http.MethodGet, "/failover/"+segment, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Failover, nil
 }

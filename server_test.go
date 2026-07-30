@@ -1,281 +1,206 @@
-package client_test
+package hrobot_test
 
 import (
-	"context"
-	"io"
+	"errors"
 	"net/http"
-	"net/http/httptest"
-	"os"
+	"slices"
+	"testing"
 
-	client "github.com/Foresee-Security/hrobot-go"
-	"github.com/Foresee-Security/hrobot-go/models"
-	. "gopkg.in/check.v1"
+	hrobot "github.com/Foresee-Security/hrobot-go"
 )
 
-func (s *ClientSuite) TestServerGetListSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestServerGetList(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "server_list.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/server_list.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	servers, err := robotClient.ServerGetList(context.Background())
-	c.Assert(err, IsNil)
-	c.Assert(len(servers), Equals, 2)
-	c.Assert(servers[0].ServerNumber, Equals, testServerID)
-	c.Assert(servers[1].ServerNumber, Equals, testServerID2)
-}
-
-func (s *ClientSuite) TestServerGetListInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.ServerGetList(context.Background())
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestServerGetListServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.ServerGetList(context.Background())
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestServerGetSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/server_get.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	server, err := robotClient.ServerGet(context.Background(), testServerID)
-	c.Assert(err, IsNil)
-	c.Assert(server.ServerNumber, Equals, testServerID)
-}
-
-func (s *ClientSuite) TestServerGetInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.ServerGet(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestServerGetServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.ServerGet(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestServerGetNotFound(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/server_get_404.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.ServerGet(context.Background(), testServerID)
-	c.Assert(err, NotNil)
-}
-
-func (s *ClientSuite) TestServerSetNameSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
-
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "server_name=mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456")
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
-
-		data, readErr := os.ReadFile(pwd + "/test/response/server_get.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.ServerSetNameInput{
-		Name: "mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456",
+	servers, err := c.ServerGetList(t.Context())
+	if err != nil {
+		t.Fatalf("ServerGetList: %v", err)
 	}
 
-	server, err := robotClient.ServerSetName(context.Background(), testServerID, input)
-	c.Assert(err, IsNil)
-	c.Assert(server.ServerNumber, Equals, testServerID)
+	wantRequest(t, rec.only(t), http.MethodGet, "/server")
+
+	if len(servers) != 2 {
+		t.Fatalf("got %d servers, want 2", len(servers))
+	}
+	if servers[0].ServerNumber != testServerID {
+		t.Errorf("servers[0].ServerNumber = %d, want %d", servers[0].ServerNumber, testServerID)
+	}
+	if servers[1].ServerNumber != testServerID2 {
+		t.Errorf("servers[1].ServerNumber = %d, want %d", servers[1].ServerNumber, testServerID2)
+	}
+	if servers[0].DC != "NBG1-DC1" {
+		t.Errorf("servers[0].DC = %q, want %q", servers[0].DC, "NBG1-DC1")
+	}
+	// The second entry sends "subnet":null, which must decode to nil rather
+	// than failing the whole listing.
+	if servers[1].Subnet != nil {
+		t.Errorf("servers[1].Subnet = %v, want nil", servers[1].Subnet)
+	}
 }
 
-func (s *ClientSuite) TestServerSetNameInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqContentType := r.Header.Get("Content-Type")
-		c.Assert(reqContentType, Equals, "application/x-www-form-urlencoded")
+func TestServerGet(t *testing.T) {
+	t.Parallel()
 
-		body, bodyErr := io.ReadAll(r.Body)
-		c.Assert(bodyErr, IsNil)
-		c.Assert(string(body), Equals, "server_name=mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456")
+	c, rec := newServer(t, serveFixture(t, "server_get.json"))
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	input := &models.ServerSetNameInput{
-		Name: "mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456",
+	server, err := c.ServerGet(t.Context(), testServerID)
+	if err != nil {
+		t.Fatalf("ServerGet: %v", err)
 	}
 
-	_, err := robotClient.ServerSetName(context.Background(), testServerID, input)
-	c.Assert(err, Not(IsNil))
+	wantRequest(t, rec.only(t), http.MethodGet, "/server/321")
+
+	if server.ServerNumber != testServerID {
+		t.Errorf("ServerNumber = %d, want %d", server.ServerNumber, testServerID)
+	}
+	if server.Name != "server1" {
+		t.Errorf("Name = %q, want %q", server.Name, "server1")
+	}
+	if server.Product != "EQ 8" {
+		t.Errorf("Product = %q, want %q", server.Product, "EQ 8")
+	}
+	if !server.Rescue || !server.Reset {
+		t.Errorf("Rescue = %v, Reset = %v, want both true", server.Rescue, server.Reset)
+	}
+	if len(server.Subnet) != 1 || server.Subnet[0].Mask != "64" {
+		t.Errorf("Subnet = %+v, want one entry with mask 64", server.Subnet)
+	}
 }
 
-func (s *ClientSuite) TestServerSetNameServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestServerGetNotFound(t *testing.T) {
+	t.Parallel()
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	c, _ := newServer(t, serveBody(http.StatusNotFound, string(fixture(t, "server_get_404.json"))))
 
-	input := &models.ServerSetNameInput{
-		Name: "mongodb-prod-px62-nvme-hetzner-nbg1-dc1-123456",
+	_, err := c.ServerGet(t.Context(), testServerID)
+	if err == nil {
+		t.Fatal("want an error, got nil")
 	}
 
-	_, err := robotClient.ServerSetName(context.Background(), testServerID, input)
-	c.Assert(err, Not(IsNil))
+	if !hrobot.IsError(err, hrobot.ErrorCodeServerNotFound) {
+		t.Errorf("IsError(err, ErrorCodeServerNotFound) = false, err = %v", err)
+	}
+
+	var apiErr hrobot.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("errors.As did not find an hrobot.Error in %v", err)
+	}
+	if apiErr.Message != "server not found" {
+		t.Errorf("Message = %q, want %q", apiErr.Message, "server not found")
+	}
 }
 
-func (s *ClientSuite) TestServerReverseSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestServerSetName(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "server_get.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/server_reverse.json")
-		c.Assert(readErr, IsNil)
+	input := &hrobot.ServerSetNameInput{Name: "server-name-123456"}
+	if _, err := c.ServerSetName(t.Context(), testServerID, input); err != nil {
+		t.Fatalf("ServerSetName: %v", err)
+	}
 
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	cancellation, err := robotClient.ServerReverse(context.Background(), testServerID)
-	c.Assert(err, IsNil)
-	c.Assert(cancellation.ServerNumber, Equals, testServerID)
-	c.Assert(cancellation.CancellationDate, Equals, "2014-04-15")
+	got := rec.only(t)
+	wantRequest(t, got, http.MethodPost, "/server/321")
+	if got.Body != "server_name=server-name-123456" {
+		t.Errorf("body = %q, want %q", got.Body, "server_name=server-name-123456")
+	}
 }
 
-func (s *ClientSuite) TestServerReverseInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+// TestServerCancellationWithdrawUsesTheDocumentedEndpoint pins the routing.
+//
+// This method previously issued POST /server/{id}/reversal, a path the Robot
+// Webservice does not define. The old test could not catch it because its
+// fixture server answered every path identically.
+func TestServerCancellationWithdrawUsesTheDocumentedEndpoint(t *testing.T) {
+	t.Parallel()
 
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	c, rec := newServer(t, serveFixture(t, "server_cancellation.json"))
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	cancellation, err := c.ServerCancellationWithdraw(t.Context(), testServerID)
+	if err != nil {
+		t.Fatalf("ServerCancellationWithdraw: %v", err)
+	}
 
-	_, err := robotClient.ServerReverse(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
+	wantRequest(t, rec.only(t), http.MethodDelete, "/server/321/cancellation")
+
+	if cancellation.ServerNumber != testServerID {
+		t.Errorf("ServerNumber = %d, want %d", cancellation.ServerNumber, testServerID)
+	}
+	// The API sends "reserved". The field was previously tagged "reservation",
+	// so it silently stayed false whatever the API said.
+	if !cancellation.Reserved {
+		t.Error("Reserved = false, want true from the fixture's \"reserved\":true")
+	}
+	if cancellation.ReservationPossible {
+		t.Error("ReservationPossible = true, want false")
+	}
+	want := []string{"Upgrade to a new server", "Server too expensive"}
+	if !slices.Equal([]string(cancellation.CancellationReason), want) {
+		t.Errorf("CancellationReason = %v, want %v", cancellation.CancellationReason, want)
+	}
 }
 
-func (s *ClientSuite) TestServerReverseServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestServerMethodsValidateArgumentsLocally(t *testing.T) {
+	t.Parallel()
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	tests := []struct {
+		name    string
+		call    func(*hrobot.Client) error
+		wantErr error
+	}{
+		{
+			name:    "ServerGet rejects a zero id",
+			call:    func(c *hrobot.Client) error { _, err := c.ServerGet(t.Context(), 0); return err },
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name:    "ServerGet rejects a negative id",
+			call:    func(c *hrobot.Client) error { _, err := c.ServerGet(t.Context(), -1); return err },
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name: "ServerSetName rejects a nil input",
+			call: func(c *hrobot.Client) error {
+				_, err := c.ServerSetName(t.Context(), testServerID, nil)
+				return err
+			},
+			wantErr: hrobot.ErrNilInput,
+		},
+		{
+			name: "ServerSetName rejects a zero id",
+			call: func(c *hrobot.Client) error {
+				_, err := c.ServerSetName(t.Context(), 0, &hrobot.ServerSetNameInput{Name: "x"})
+				return err
+			},
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+		{
+			name: "ServerCancellationWithdraw rejects a zero id",
+			call: func(c *hrobot.Client) error {
+				_, err := c.ServerCancellationWithdraw(t.Context(), 0)
+				return err
+			},
+			wantErr: hrobot.ErrInvalidServerID,
+		},
+	}
 
-	_, err := robotClient.ServerReverse(context.Background(), testServerID)
-	c.Assert(err, Not(IsNil))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, rec := newServer(t, unreachable(t))
+
+			if err := tc.call(c); !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tc.wantErr)
+			}
+			// The point of validating at the boundary is that no request is
+			// made at all.
+			if n := rec.count(); n != 0 {
+				t.Errorf("sent %d requests, want 0", n)
+			}
+		})
+	}
 }

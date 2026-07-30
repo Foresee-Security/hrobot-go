@@ -1,120 +1,105 @@
-package client_test
+package hrobot_test
 
 import (
-	"context"
+	"errors"
 	"net/http"
-	"net/http/httptest"
-	"os"
+	"testing"
 
-	client "github.com/Foresee-Security/hrobot-go"
-	. "gopkg.in/check.v1"
+	hrobot "github.com/Foresee-Security/hrobot-go"
 )
 
-func (s *ClientSuite) TestFailoverGetListSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestFailoverGetList(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "failover_list.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/failover_list.json")
-		c.Assert(readErr, IsNil)
+	addresses, err := c.FailoverGetList(t.Context())
+	if err != nil {
+		t.Fatalf("FailoverGetList: %v", err)
+	}
 
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	wantRequest(t, rec.only(t), http.MethodGet, "/failover")
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	failoverList, err := robotClient.FailoverGetList(context.Background())
-	c.Assert(err, IsNil)
-	c.Assert(len(failoverList), Equals, 1)
-	c.Assert(failoverList[0].IP, Equals, testIP)
+	if len(addresses) != 2 {
+		t.Fatalf("got %d addresses, want 2", len(addresses))
+	}
+	if addresses[0].IP != testIP {
+		t.Errorf("addresses[0].IP = %q, want %q", addresses[0].IP, testIP)
+	}
+	// server_ipv6_net was absent from the struct, so the API's value was
+	// dropped for every failover address.
+	if addresses[0].ServerIPv6Net != "2a01:4f8:d0a:2003::" {
+		t.Errorf("addresses[0].ServerIPv6Net = %q, want the value the API sent", addresses[0].ServerIPv6Net)
+	}
+	if addresses[1].IP != "2a01:4f8:fff1::" {
+		t.Errorf("addresses[1].IP = %q, want the IPv6 address", addresses[1].IP)
+	}
 }
 
-func (s *ClientSuite) TestFailoverGetListInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestFailoverGet(t *testing.T) {
+	t.Parallel()
 
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	c, rec := newServer(t, serveFixture(t, "failover_get.json"))
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	failover, err := c.FailoverGet(t.Context(), testIP)
+	if err != nil {
+		t.Fatalf("FailoverGet: %v", err)
+	}
 
-	_, err := robotClient.FailoverGetList(context.Background())
-	c.Assert(err, Not(IsNil))
+	wantRequest(t, rec.only(t), http.MethodGet, "/failover/123.123.123.123")
+
+	if failover.IP != testIP {
+		t.Errorf("IP = %q, want %q", failover.IP, testIP)
+	}
+	// ServerIP is the owning server, ActiveServerIP the one traffic reaches.
+	// They differ once the address has been switched, so a test asserting both
+	// is the one that would catch them being conflated.
+	if failover.ServerIP != "78.46.1.93" {
+		t.Errorf("ServerIP = %q, want %q", failover.ServerIP, "78.46.1.93")
+	}
+	if failover.ActiveServerIP != testIP2 {
+		t.Errorf("ActiveServerIP = %q, want %q", failover.ActiveServerIP, testIP2)
+	}
+	if failover.ServerIPv6Net != "2a01:4f8:d0a:2003::" {
+		t.Errorf("ServerIPv6Net = %q, want the value the API sent", failover.ServerIPv6Net)
+	}
 }
 
-func (s *ClientSuite) TestFailoverGetListServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestFailoverGetEscapesIPv6PathSegment(t *testing.T) {
+	t.Parallel()
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	c, rec := newServer(t, serveFixture(t, "failover_get.json"))
 
-	_, err := robotClient.FailoverGetList(context.Background())
-	c.Assert(err, Not(IsNil))
+	// A failover address may be IPv6, whose colons must survive into the path.
+	if _, err := c.FailoverGet(t.Context(), "2a01:4f8:fff1::"); err != nil {
+		t.Fatalf("FailoverGet: %v", err)
+	}
+
+	if got := rec.only(t); got.Path != "/failover/2a01:4f8:fff1::" {
+		t.Errorf("path = %q, want /failover/2a01:4f8:fff1::", got.Path)
+	}
 }
 
-func (s *ClientSuite) TestFailoverGetSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestFailoverGetRejectsEmptyIP(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, unreachable(t))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/failover_get.json")
-		c.Assert(readErr, IsNil)
-
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	failover, err := robotClient.FailoverGet(context.Background(), testIP)
-	c.Assert(err, IsNil)
-	c.Assert(failover.IP, Equals, testIP)
+	_, err := c.FailoverGet(t.Context(), "")
+	if !errors.Is(err, hrobot.ErrEmptyIP) {
+		t.Fatalf("error = %v, want ErrEmptyIP", err)
+	}
+	if n := rec.count(); n != 0 {
+		t.Errorf("sent %d requests, want 0", n)
+	}
 }
 
-func (s *ClientSuite) TestFailoverGetInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestFailoverGetServerError(t *testing.T) {
+	t.Parallel()
 
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	c, _ := newServer(t, serveBody(http.StatusInternalServerError, ""))
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.FailoverGet(context.Background(), testIP)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestFailoverGetServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.FailoverGet(context.Background(), testIP)
-	c.Assert(err, Not(IsNil))
+	if _, err := c.FailoverGet(t.Context(), testIP); err == nil {
+		t.Fatal("want an error, got nil")
+	}
 }

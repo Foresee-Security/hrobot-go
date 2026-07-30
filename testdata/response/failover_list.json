@@ -1,0 +1,22 @@
+[
+  {
+    "failover": {
+      "ip": "123.123.123.123",
+      "netmask": "255.255.255.255",
+      "server_ip": "78.46.1.93",
+      "server_ipv6_net": "2a01:4f8:d0a:2003::",
+      "server_number": 321,
+      "active_server_ip": "78.46.1.93"
+    }
+  },
+  {
+    "failover": {
+      "ip": "2a01:4f8:fff1::",
+      "netmask": "ffff:ffff:ffff:ffff::",
+      "server_ip": "78.46.1.93",
+      "server_ipv6_net": "2a01:4f8:d0a:2003::",
+      "server_number": 321,
+      "active_server_ip": "2a01:4f8:d0a:2003::"
+    }
+  }
+]

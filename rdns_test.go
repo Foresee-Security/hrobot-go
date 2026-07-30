@@ -1,121 +1,103 @@
-package client_test
+package hrobot_test
 
 import (
-	"context"
+	"errors"
 	"net/http"
-	"net/http/httptest"
-	"os"
+	"strings"
+	"testing"
 
-	client "github.com/Foresee-Security/hrobot-go"
-	. "gopkg.in/check.v1"
+	hrobot "github.com/Foresee-Security/hrobot-go"
 )
 
-func (s *ClientSuite) TestRDnsGetListSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestRDNSGetList(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "rdns_list.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/rdns_list.json")
-		c.Assert(readErr, IsNil)
+	entries, err := c.RDNSGetList(t.Context())
+	if err != nil {
+		t.Fatalf("RDNSGetList: %v", err)
+	}
 
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	wantRequest(t, rec.only(t), http.MethodGet, "/rdns")
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	rdnsList, err := robotClient.RDnsGetList(context.Background())
-	c.Assert(err, IsNil)
-	c.Assert(len(rdnsList), Equals, 2)
-	c.Assert(rdnsList[0].IP, Equals, testIP)
-	c.Assert(rdnsList[1].IP, Equals, testIP2)
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+	if entries[0].IP != testIP || entries[0].PTR != "testen.de" {
+		t.Errorf("entries[0] = %+v, want %s/testen.de", entries[0], testIP)
+	}
+	if entries[1].IP != testIP2 || entries[1].PTR != "your-server.de" {
+		t.Errorf("entries[1] = %+v, want %s/your-server.de", entries[1], testIP2)
+	}
 }
 
-func (s *ClientSuite) TestRDnsGetListInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestRDNSGet(t *testing.T) {
+	t.Parallel()
 
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	c, rec := newServer(t, serveFixture(t, "rdns_get.json"))
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	entry, err := c.RDNSGet(t.Context(), testIP)
+	if err != nil {
+		t.Fatalf("RDNSGet: %v", err)
+	}
 
-	_, err := robotClient.RDnsGetList(context.Background())
-	c.Assert(err, Not(IsNil))
+	wantRequest(t, rec.only(t), http.MethodGet, "/rdns/123.123.123.123")
+
+	if entry.IP != testIP || entry.PTR != "testen.de" {
+		t.Errorf("entry = %+v, want %s/testen.de", entry, testIP)
+	}
 }
 
-func (s *ClientSuite) TestRDnsGetListServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
+func TestRDNSGetRejectsEmptyIP(t *testing.T) {
+	t.Parallel()
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
+	c, rec := newServer(t, unreachable(t))
 
-	_, err := robotClient.RDnsGetList(context.Background())
-	c.Assert(err, Not(IsNil))
+	// An empty address would otherwise build "/rdns/", which the API answers
+	// with the whole collection. The caller would then get a decode failure
+	// naming a type mismatch instead of the mistake they actually made.
+	_, err := c.RDNSGet(t.Context(), "")
+	if !errors.Is(err, hrobot.ErrEmptyIP) {
+		t.Fatalf("error = %v, want ErrEmptyIP", err)
+	}
+	if n := rec.count(); n != 0 {
+		t.Errorf("sent %d requests, want 0", n)
+	}
 }
 
-func (s *ClientSuite) TestRDnsGetSuccess(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+// TestRDNSGetEscapesThePathSegment pins that a caller-supplied address cannot
+// steer the request at a different endpoint.
+//
+// The assertion is on RequestURI, the bytes actually sent. An unescaped
+// "../server/321" would put "/rdns/../server/321" on the wire, which any server
+// that normalizes paths resolves to /server/321.
+func TestRDNSGetEscapesThePathSegment(t *testing.T) {
+	t.Parallel()
 
-		pwd, pwdErr := os.Getwd()
-		c.Assert(pwdErr, IsNil)
+	c, rec := newServer(t, serveFixture(t, "rdns_get.json"))
 
-		data, readErr := os.ReadFile(pwd + "/test/response/rdns_get.json")
-		c.Assert(readErr, IsNil)
+	if _, err := c.RDNSGet(t.Context(), "../server/321"); err != nil {
+		t.Fatalf("RDNSGet: %v", err)
+	}
 
-		_, err := w.Write(data)
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	rdns, err := robotClient.RDnsGet(context.Background(), testIP)
-	c.Assert(err, IsNil)
-	c.Assert(rdns.IP, Equals, testIP)
+	got := rec.only(t)
+	if got.RequestURI != "/rdns/..%2Fserver%2F321" {
+		t.Errorf("request target = %q, want the separators escaped", got.RequestURI)
+	}
+	if strings.Contains(got.RequestURI, "/../") {
+		t.Errorf("request target %q carries an unescaped traversal", got.RequestURI)
+	}
 }
 
-func (s *ClientSuite) TestRDnsGetInvalidResponse(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+func TestRDNSGetNotFound(t *testing.T) {
+	t.Parallel()
 
-		_, err := w.Write([]byte("invalid JSON"))
-		c.Assert(err, IsNil)
-	}))
-	defer ts.Close()
+	body := `{"error":{"code":"RDNS_NOT_FOUND","message":"rdns entry not found","status":404}}`
+	c, _ := newServer(t, serveBody(http.StatusNotFound, body))
 
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.RDnsGet(context.Background(), testIP)
-	c.Assert(err, Not(IsNil))
-}
-
-func (s *ClientSuite) TestRDnsGetServerError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	robotClient := client.NewBasicAuthClient("user", "pass")
-	robotClient.SetBaseURL(ts.URL)
-
-	_, err := robotClient.RDnsGet(context.Background(), testIP)
-	c.Assert(err, Not(IsNil))
+	_, err := c.RDNSGet(t.Context(), testIP)
+	if !hrobot.IsError(err, hrobot.ErrorCodeReverseDNSNotFound) {
+		t.Fatalf("IsError(err, ErrorCodeReverseDNSNotFound) = false, err = %v", err)
+	}
 }
