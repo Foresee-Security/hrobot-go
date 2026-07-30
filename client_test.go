@@ -134,14 +134,17 @@ func TestClientValidateCredentials(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:   "accepts a successful listing",
+			// The live API answers an account with no dedicated servers this
+			// way, with 200 and an empty array.
+			name:   "accepts an empty listing",
 			status: http.StatusOK,
 			body:   `[]`,
 		},
 		{
-			// An account with no dedicated servers answers 404. The credentials
-			// were still accepted, so this must not read as a failure.
-			name:   "accepts an account with no servers",
+			// A 404 still proves authentication succeeded, because an
+			// unauthenticated request is rejected with 401 before the API
+			// looks for anything.
+			name:   "accepts a not-found listing",
 			status: http.StatusNotFound,
 			body:   `{"error":{"code":"SERVER_NOT_FOUND","message":"server not found","status":404}}`,
 		},

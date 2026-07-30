@@ -50,6 +50,12 @@ count so the exemption cannot go quiet, and fails on anything else.
 
 The module has **no dependencies**. There is no `go.sum`.
 
+The client has also been run against the live Robot Webservice on a real
+account, which is the only way to settle behaviour fixtures can only assume.
+That run confirmed the error codes this client keys on, that a listing with
+nothing in it comes back as 200 with an empty array rather than a 404, and that
+a rejected argument never reaches the network.
+
 ## What changed from upstream
 
 ### Bugs

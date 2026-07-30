@@ -210,12 +210,18 @@ func (c *Client) SetCredentials(username, password string) error {
 }
 
 // ValidateCredentials reports whether the Robot Webservice accepts the
-// configured credentials, by issuing one real request.
+// configured credentials, by issuing one real request against the server
+// listing.
 //
 // A nil return means the credentials authenticated, not that the account owns
-// any servers. An account with no dedicated servers answers the server listing
-// with 404, which is still proof that authentication succeeded, so that case
-// is treated as success.
+// any servers. Measured against the live API, an account with no dedicated
+// servers answers the listing with 200 and an empty array.
+//
+// A 404 is also treated as success. Reaching a not-found answer at all proves
+// authentication succeeded, since the API rejects an unauthenticated request
+// with 401 before it ever looks for the resource. Other Robot collections such
+// as /ip and /failover do answer 404 when they are empty, so this guards
+// against the server listing behaving that way on some accounts.
 func (c *Client) ValidateCredentials(ctx context.Context) error {
 	_, err := c.do(ctx, "validate credentials", http.MethodGet, "/server", nil)
 	switch {
