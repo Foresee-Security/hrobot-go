@@ -3,6 +3,7 @@ package hrobot_test
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	hrobot "github.com/Foresee-Security/hrobot-go"
@@ -77,6 +78,27 @@ func TestFailoverGetEscapesIPv6PathSegment(t *testing.T) {
 
 	if got := rec.only(t); got.Path != "/failover/2a01:4f8:fff1::" {
 		t.Errorf("path = %q, want /failover/2a01:4f8:fff1::", got.Path)
+	}
+}
+
+// TestFailoverGetEscapesThePathSegment covers the second caller-supplied
+// address, which previously had no traversal test at all. Both addressEndpoint
+// callers are now pinned, so the guarantee does not rest on one of them.
+func TestFailoverGetEscapesThePathSegment(t *testing.T) {
+	t.Parallel()
+
+	c, rec := newServer(t, serveFixture(t, "failover_get.json"))
+
+	if _, err := c.FailoverGet(t.Context(), "../server/321"); err != nil {
+		t.Fatalf("FailoverGet: %v", err)
+	}
+
+	got := rec.only(t)
+	if got.RequestURI != "/failover/..%2Fserver%2F321" {
+		t.Errorf("request target = %q, want the separators escaped", got.RequestURI)
+	}
+	if strings.Contains(got.RequestURI, "/../") {
+		t.Errorf("request target %q carries an unescaped traversal", got.RequestURI)
 	}
 }
 

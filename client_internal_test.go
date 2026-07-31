@@ -53,6 +53,61 @@ func TestWithTimeoutReplacesTheDefault(t *testing.T) {
 	}
 }
 
+// TestTimeoutAndHTTPClientOptionsCommute pins that the two options can be
+// written in either order.
+//
+// Previously WithTimeout wrote straight through to the http.Client, so the
+// order decided the outcome: after WithHTTPClient it retimed the caller's
+// client, and before it the timeout was discarded entirely and the request ran
+// unbounded. The failing order was the one that failed open.
+func TestTimeoutAndHTTPClientOptionsCommute(t *testing.T) {
+	t.Parallel()
+
+	const want = 3 * time.Second
+
+	supplied := func() *http.Client { return &http.Client{Timeout: 90 * time.Second} }
+
+	first := NewBasicAuthClient("user", "pass",
+		WithTimeout(want),
+		WithHTTPClient(supplied()),
+	)
+	second := NewBasicAuthClient("user", "pass",
+		WithHTTPClient(supplied()),
+		WithTimeout(want),
+	)
+
+	if first.httpClient.Timeout != want {
+		t.Errorf("timeout before client: got %v, want %v", first.httpClient.Timeout, want)
+	}
+	if second.httpClient.Timeout != want {
+		t.Errorf("timeout after client: got %v, want %v", second.httpClient.Timeout, want)
+	}
+}
+
+// TestWithTimeoutLeavesTheSuppliedClientAlone pins that retiming happens on a
+// copy. A caller's http.Client is frequently shared with the rest of their
+// program, and silently changing its timeout is not this library's business.
+func TestWithTimeoutLeavesTheSuppliedClientAlone(t *testing.T) {
+	t.Parallel()
+
+	supplied := &http.Client{Timeout: 90 * time.Second}
+
+	c := NewBasicAuthClient("user", "pass",
+		WithHTTPClient(supplied),
+		WithTimeout(3*time.Second),
+	)
+
+	if supplied.Timeout != 90*time.Second {
+		t.Errorf("supplied client was retimed to %v, want it untouched at 90s", supplied.Timeout)
+	}
+	if c.httpClient == supplied {
+		t.Error("client was retimed in place rather than on a copy")
+	}
+	if c.httpClient.Transport != supplied.Transport {
+		t.Error("the copy lost the supplied transport")
+	}
+}
+
 func TestWithHTTPClientSubstitutesTheClient(t *testing.T) {
 	t.Parallel()
 

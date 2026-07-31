@@ -87,12 +87,12 @@ type resetPostResponse struct {
 func (c *Client) ResetGet(ctx context.Context, id int) (*Reset, error) {
 	const op = "reset get"
 
-	segment, err := serverSegment(id)
+	path, err := scopedEndpoint("/reset", id, "")
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := fetch[resetResponse](ctx, c, op, http.MethodGet, "/reset/"+segment, nil)
+	resp, err := fetch[resetResponse](ctx, c, op, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (c *Client) ResetSet(ctx context.Context, id int, input *ResetSetInput) (*R
 	if input == nil {
 		return nil, ErrNilInput
 	}
-	segment, err := serverSegment(id)
+	path, err := scopedEndpoint("/reset", id, "")
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (c *Client) ResetSet(ctx context.Context, id int, input *ResetSetInput) (*R
 	form := url.Values{}
 	form.Set("type", string(input.Type))
 
-	resp, err := fetch[resetPostResponse](ctx, c, op, http.MethodPost, "/reset/"+segment, form)
+	resp, err := fetch[resetPostResponse](ctx, c, op, http.MethodPost, path, form)
 	if err != nil {
 		return nil, err
 	}

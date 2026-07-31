@@ -208,12 +208,12 @@ func (c *Client) BootLinuxDelete(ctx context.Context, id int) (*Linux, error) {
 // bootRescue runs one call against a server's rescue endpoint. The three rescue
 // methods differ only in HTTP method and request body.
 func (c *Client) bootRescue(ctx context.Context, op, method string, id int, form url.Values) (*Rescue, error) {
-	segment, err := serverSegment(id)
+	path, err := scopedEndpoint("/boot", id, "/rescue")
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := fetch[rescueResponse](ctx, c, op, method, "/boot/"+segment+"/rescue", form)
+	resp, err := fetch[rescueResponse](ctx, c, op, method, path, form)
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +223,12 @@ func (c *Client) bootRescue(ctx context.Context, op, method string, id int, form
 // bootLinux runs one call against a server's linux endpoint, for the same
 // reason [Client.bootRescue] exists.
 func (c *Client) bootLinux(ctx context.Context, op, method string, id int, form url.Values) (*Linux, error) {
-	segment, err := serverSegment(id)
+	path, err := scopedEndpoint("/boot", id, "/linux")
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := fetch[linuxResponse](ctx, c, op, method, "/boot/"+segment+"/linux", form)
+	resp, err := fetch[linuxResponse](ctx, c, op, method, path, form)
 	if err != nil {
 		return nil, err
 	}

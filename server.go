@@ -127,12 +127,12 @@ func (c *Client) ServerGetList(ctx context.Context) ([]Server, error) {
 func (c *Client) ServerGet(ctx context.Context, id int) (*Server, error) {
 	const op = "server get"
 
-	segment, err := serverSegment(id)
+	path, err := scopedEndpoint("/server", id, "")
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := fetch[serverResponse](ctx, c, op, http.MethodGet, "/server/"+segment, nil)
+	resp, err := fetch[serverResponse](ctx, c, op, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (c *Client) ServerSetName(ctx context.Context, id int, input *ServerSetName
 	if input == nil {
 		return nil, ErrNilInput
 	}
-	segment, err := serverSegment(id)
+	path, err := scopedEndpoint("/server", id, "")
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func (c *Client) ServerSetName(ctx context.Context, id int, input *ServerSetName
 	form := url.Values{}
 	form.Set("server_name", input.Name)
 
-	resp, err := fetch[serverResponse](ctx, c, op, http.MethodPost, "/server/"+segment, form)
+	resp, err := fetch[serverResponse](ctx, c, op, http.MethodPost, path, form)
 	if err != nil {
 		return nil, err
 	}
@@ -172,12 +172,12 @@ func (c *Client) ServerSetName(ctx context.Context, id int, input *ServerSetName
 func (c *Client) ServerCancellationWithdraw(ctx context.Context, id int) (*Cancellation, error) {
 	const op = "server cancellation withdraw"
 
-	segment, err := serverSegment(id)
+	path, err := scopedEndpoint("/server", id, "/cancellation")
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := fetch[cancellationResponse](ctx, c, op, http.MethodDelete, "/server/"+segment+"/cancellation", nil)
+	resp, err := fetch[cancellationResponse](ctx, c, op, http.MethodDelete, path, nil)
 	if err != nil {
 		return nil, err
 	}

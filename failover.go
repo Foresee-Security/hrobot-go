@@ -47,12 +47,12 @@ func (c *Client) FailoverGetList(ctx context.Context) ([]Failover, error) {
 func (c *Client) FailoverGet(ctx context.Context, ip string) (*Failover, error) {
 	const op = "failover get"
 
-	segment, err := ipSegment(ip)
+	path, err := addressEndpoint("/failover", ip)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := fetch[failoverResponse](ctx, c, op, http.MethodGet, "/failover/"+segment, nil)
+	resp, err := fetch[failoverResponse](ctx, c, op, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}

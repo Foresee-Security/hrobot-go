@@ -104,16 +104,17 @@ func WithHTTPClient(httpClient *http.Client) Option {
 	}
 }
 
-// WithTimeout sets the per-request timeout on the client's http.Client,
-// replacing the 30-second default. A non-positive duration is ignored.
+// WithTimeout sets the per-request timeout, replacing the 30-second default. A
+// non-positive duration is ignored.
 //
-// This mutates the http.Client the [Client] will use, so ordering matters.
-// Applied after [WithHTTPClient] it retimes the supplied client, which is
-// visible to anything else sharing it.
+// Order does not matter. The timeout is recorded and applied once every option
+// has run, so it takes effect whether it is written before or after
+// [WithHTTPClient]. Combined with a supplied client it retimes a copy, leaving
+// the caller's own client and anything else sharing it untouched.
 func WithTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
 		if timeout > 0 {
-			c.httpClient.Timeout = timeout
+			c.timeout = timeout
 		}
 	}
 }
@@ -127,6 +128,10 @@ type Client struct {
 	baseURL    string
 	userAgent  string
 	httpClient *http.Client
+
+	// timeout is what WithTimeout recorded, applied to httpClient once every
+	// option has run so the two options commute.
+	timeout time.Duration
 
 	// mu guards username and password, the only mutable fields, so that
 	// SetCredentials cannot race a request reading them.
@@ -168,6 +173,15 @@ func NewBasicAuthClient(username, password string, opts ...Option) *Client {
 	}
 	for _, opt := range opts {
 		opt(c)
+	}
+
+	// Applied after every option so the result does not depend on the order
+	// they were written in. The copy is what keeps a caller-supplied client
+	// from being retimed underneath whatever else is sharing it.
+	if c.timeout > 0 && c.httpClient.Timeout != c.timeout {
+		retimed := *c.httpClient
+		retimed.Timeout = c.timeout
+		c.httpClient = &retimed
 	}
 	return c
 }
@@ -278,13 +292,13 @@ func refuseCrossOriginRedirect(req *http.Request, via []*http.Request) error {
 // do performs one API call and returns the raw response body. op names the
 // operation for the error message, so a failure identifies the call that
 // produced it without the caller having to add that context at every site.
-func (c *Client) do(ctx context.Context, op, method, path string, form url.Values) ([]byte, error) {
+func (c *Client) do(ctx context.Context, op, method string, path endpoint, form url.Values) ([]byte, error) {
 	var body io.Reader
 	if form != nil {
 		body = strings.NewReader(form.Encode())
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+string(path), body)
 	if err != nil {
 		return nil, fmt.Errorf("hrobot: %s: build request: %w", op, err)
 	}
@@ -316,7 +330,7 @@ func (c *Client) do(ctx context.Context, op, method, path string, form url.Value
 // fetch performs one API call and decodes its body into T. It exists so the
 // request, the status handling and the decode error message are written once
 // rather than repeated in every resource method.
-func fetch[T any](ctx context.Context, c *Client, op, method, path string, form url.Values) (T, error) {
+func fetch[T any](ctx context.Context, c *Client, op, method string, path endpoint, form url.Values) (T, error) {
 	var out T
 
 	raw, err := c.do(ctx, op, method, path, form)
@@ -342,7 +356,7 @@ func fetch[T any](ctx context.Context, c *Client, op, method, path string, form 
 // A 404 carrying a specific code such as SERVER_NOT_FOUND, and a 404 with no
 // error document at all, both still fail, so a request aimed at a path that
 // does not exist stays loud instead of reading as an empty result.
-func fetchList[E, T any](ctx context.Context, c *Client, op, path string, pick func(E) T) ([]T, error) {
+func fetchList[E, T any](ctx context.Context, c *Client, op string, path endpoint, pick func(E) T) ([]T, error) {
 	envelopes, err := fetch[[]E](ctx, c, op, http.MethodGet, path, nil)
 	if err != nil {
 		if IsError(err, ErrorCodeNotFound) {
@@ -372,22 +386,40 @@ func readCapped(r io.Reader) ([]byte, error) {
 	return body, nil
 }
 
-// serverSegment validates a server number and renders it as a path segment.
-// Rejecting it here turns a guaranteed 404 into an immediate local error.
-func serverSegment(id int) (string, error) {
+// endpoint is a request path that has been built safely, and is what [fetch]
+// and [fetchList] accept.
+//
+// The type is the enforcement. Go converts an untyped string constant to a
+// named string type implicitly, so a literal path such as "/server" still reads
+// naturally at the call site, and a literal carries no caller input to escape.
+// An expression involving a string variable is typed string and does not
+// convert, so a hand-concatenated path will not compile. Escaping stops being
+// something each new endpoint has to remember.
+type endpoint string
+
+// scopedEndpoint builds a path for a server-scoped resource, such as
+// /boot/321/rescue, after checking the server number.
+//
+// Rejecting a non-positive number here turns a guaranteed 404 into an immediate
+// local error. prefix and suffix are fixed by the caller in this package and
+// never carry caller input, which is why only the number is validated.
+func scopedEndpoint(prefix string, id int, suffix string) (endpoint, error) {
 	if id <= 0 {
 		return "", fmt.Errorf("%w, got %d", ErrInvalidServerID, id)
 	}
-	return strconv.Itoa(id), nil
+	return endpoint(prefix + "/" + strconv.Itoa(id) + suffix), nil
 }
 
-// ipSegment validates an IP address and escapes it for use as a path segment.
+// addressEndpoint builds a path for an address-scoped resource, such as
+// /rdns/1.2.3.4, after checking the address and escaping it.
+//
 // Escaping matters because the address is caller-supplied. Without it a value
-// containing a slash would address a different endpoint than the method name
-// promises.
-func ipSegment(ip string) (string, error) {
+// containing a slash addresses a different endpoint than the method name
+// promises. url.PathEscape leaves a colon alone, so an IPv6 failover address
+// still routes.
+func addressEndpoint(prefix, ip string) (endpoint, error) {
 	if ip == "" {
 		return "", ErrEmptyIP
 	}
-	return url.PathEscape(ip), nil
+	return endpoint(prefix + "/" + url.PathEscape(ip)), nil
 }

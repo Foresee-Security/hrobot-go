@@ -34,12 +34,12 @@ func (c *Client) RDNSGetList(ctx context.Context) ([]RDNS, error) {
 func (c *Client) RDNSGet(ctx context.Context, ip string) (*RDNS, error) {
 	const op = "rdns get"
 
-	segment, err := ipSegment(ip)
+	path, err := addressEndpoint("/rdns", ip)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := fetch[rdnsResponse](ctx, c, op, http.MethodGet, "/rdns/"+segment, nil)
+	resp, err := fetch[rdnsResponse](ctx, c, op, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
