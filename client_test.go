@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -322,6 +324,171 @@ func TestNonEmptyFailuresStayLoud(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// roundTripperFunc adapts a function to [http.RoundTripper], so a test can
+// serve a request without a network listener and inspect what the http.Client
+// did with it.
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestWithHTTPClientTransportServesTheRequest gives the WithHTTPClient seam its
+// second adapter. Until something other than the default actually serves a
+// request through it, the seam is hypothetical and the option could be a no-op
+// without any test noticing.
+func TestWithHTTPClientTransportServesTheRequest(t *testing.T) {
+	t.Parallel()
+
+	var got *http.Request
+	hc := &http.Client{
+		Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			got = r.Clone(r.Context())
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`[]`)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	c := hrobot.NewBasicAuthClient(testUser, testPass, hrobot.WithHTTPClient(hc))
+
+	servers, err := c.ServerGetList(t.Context())
+	if err != nil {
+		t.Fatalf("ServerGetList: %v", err)
+	}
+	if len(servers) != 0 {
+		t.Errorf("got %d servers, want 0", len(servers))
+	}
+
+	if got == nil {
+		t.Fatal("the supplied transport never saw a request")
+	}
+	if got.URL.Path != "/server" {
+		t.Errorf("path = %q, want /server", got.URL.Path)
+	}
+	if user, _, ok := got.BasicAuth(); !ok || user != testUser {
+		t.Errorf("basic auth user = %q, ok = %v", user, ok)
+	}
+}
+
+// TestRedirectToAnotherOriginIsRefused pins the credential-leak guard.
+//
+// The standard library decides whether to resend Authorization by comparing
+// hostnames, which drops the port and ignores the scheme. Two servers on
+// 127.0.0.1 therefore look like one host to it, and so does an https to http
+// downgrade. Written against the stdlib default this test fails, with the
+// target receiving the credentials.
+func TestRedirectToAnotherOriginIsRefused(t *testing.T) {
+	t.Parallel()
+
+	targetURL, targetRec := newRecordingServer(t, serveBody(http.StatusOK, `[]`))
+	redirectURL, _ := newRecordingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, targetURL+"/server", http.StatusFound)
+	})
+
+	c := hrobot.NewBasicAuthClient(testUser, testPass, hrobot.WithBaseURL(redirectURL))
+
+	_, err := c.ServerGetList(t.Context())
+	if !errors.Is(err, hrobot.ErrRedirectCrossOrigin) {
+		t.Fatalf("error = %v, want ErrRedirectCrossOrigin", err)
+	}
+
+	if n := targetRec.count(); n != 0 {
+		t.Errorf("redirect target received %d requests, want 0", n)
+	}
+}
+
+// TestRedirectWithinTheSameOriginIsFollowed keeps the guard from being a blanket
+// ban. A redirect that stays on the configured origin cannot leak anything.
+func TestRedirectWithinTheSameOriginIsFollowed(t *testing.T) {
+	t.Parallel()
+
+	c, rec := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/server" {
+			http.Redirect(w, r, "/server/moved", http.StatusFound)
+			return
+		}
+		serveBody(http.StatusOK, `[]`)(w, r)
+	})
+
+	if _, err := c.ServerGetList(t.Context()); err != nil {
+		t.Fatalf("ServerGetList: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.requests) != 2 {
+		t.Fatalf("got %d requests, want 2 (original plus the followed redirect)", len(rec.requests))
+	}
+	if rec.requests[1].Path != "/server/moved" {
+		t.Errorf("second request path = %q, want /server/moved", rec.requests[1].Path)
+	}
+	if !rec.requests[1].AuthOK {
+		t.Error("credentials were dropped on a same-origin redirect")
+	}
+}
+
+// TestSetCredentialsDuringRequests exercises the concurrency contract the
+// Client documents. Nothing previously ran SetCredentials alongside a request,
+// so -race had no opportunity to observe the credential fields at all and the
+// guard could be deleted with the whole gate still green.
+func TestSetCredentialsDuringRequests(t *testing.T) {
+	t.Parallel()
+
+	const (
+		readers = 8
+		rounds  = 25
+	)
+
+	c, rec := newServer(t, serveBody(http.StatusOK, `[]`))
+
+	pairs := [][2]string{{testUser, testPass}, {"rotated-user", "rotated-pass"}}
+
+	var wg sync.WaitGroup
+	for range readers {
+		wg.Go(func() {
+			for range rounds {
+				if _, err := c.ServerGetList(t.Context()); err != nil {
+					t.Errorf("ServerGetList: %v", err)
+					return
+				}
+			}
+		})
+	}
+
+	wg.Go(func() {
+		for i := range readers * rounds {
+			p := pairs[i%len(pairs)]
+			if err := c.SetCredentials(p[0], p[1]); err != nil {
+				t.Errorf("SetCredentials: %v", err)
+				return
+			}
+		}
+	})
+
+	wg.Wait()
+
+	// Every request must carry one of the two whole pairs. A torn read would
+	// show up as a username from one pair beside a password from the other.
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for i, req := range rec.requests {
+		matched := false
+		for _, p := range pairs {
+			if req.AuthUser == p[0] && req.AuthPass == p[1] {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("request %d carried a mixed credential pair: user=%q pass=%q", i, req.AuthUser, req.AuthPass)
+		}
+	}
+	if len(rec.requests) != readers*rounds {
+		t.Errorf("recorded %d requests, want %d", len(rec.requests), readers*rounds)
 	}
 }
 

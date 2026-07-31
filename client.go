@@ -157,11 +157,14 @@ var _ RobotClient = (*Client)(nil)
 // use, where a half-applied rotation would be neither the old pair nor the new.
 func NewBasicAuthClient(username, password string, opts ...Option) *Client {
 	c := &Client{
-		baseURL:    DefaultBaseURL,
-		userAgent:  defaultUserAgent,
-		httpClient: &http.Client{Timeout: defaultTimeout},
-		username:   username,
-		password:   password,
+		baseURL:   DefaultBaseURL,
+		userAgent: defaultUserAgent,
+		httpClient: &http.Client{
+			Timeout:       defaultTimeout,
+			CheckRedirect: refuseCrossOriginRedirect,
+		},
+		username: username,
+		password: password,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -239,6 +242,37 @@ func (c *Client) ValidateCredentials(ctx context.Context) error {
 	default:
 		return err
 	}
+}
+
+// ErrRedirectCrossOrigin means the server tried to redirect a request to a
+// different scheme, host or port, and the client refused to follow it.
+var ErrRedirectCrossOrigin = errors.New("hrobot: refusing to follow a redirect to a different origin")
+
+// refuseCrossOriginRedirect stops the client following a redirect that leaves
+// the origin the caller configured.
+//
+// This exists because of how the standard library decides whether to resend an
+// Authorization header. It compares hostnames, which excludes the port and
+// ignores the scheme, so a redirect from https to http on the same host, or to
+// a different port, still carries the credentials. For a basic-auth client that
+// is the whole secret travelling somewhere the caller never named, in the
+// downgrade case over cleartext.
+//
+// The Robot Webservice is a single documented endpoint and publishes no
+// redirects, so refusing costs nothing that is known to work. A caller who
+// supplies their own client through [WithHTTPClient] owns this decision, and
+// gets the standard library default unless they set their own.
+func refuseCrossOriginRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+
+	origin := via[0].URL
+	if req.URL.Scheme != origin.Scheme || req.URL.Host != origin.Host {
+		return fmt.Errorf("%w: %s://%s to %s://%s",
+			ErrRedirectCrossOrigin, origin.Scheme, origin.Host, req.URL.Scheme, req.URL.Host)
+	}
+	return nil
 }
 
 // do performs one API call and returns the raw response body. op names the
