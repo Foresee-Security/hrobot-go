@@ -163,7 +163,10 @@ func TestErrorCodesRoundTrip(t *testing.T) {
 			body := fmt.Sprintf(`{"error":{"code":%q,"message":"x","status":400}}`, code)
 			c, _ := newServer(t, serveBody(http.StatusBadRequest, body))
 
-			_, err := c.ServerGetList(t.Context())
+			// Driven through a single-get rather than a list, because the
+			// collection endpoints deliberately absorb NOT_FOUND as an empty
+			// result and would swallow one of the codes under test.
+			_, err := c.ServerGet(t.Context(), testServerID)
 			if !hrobot.IsError(err, code) {
 				t.Fatalf("IsError(err, %q) = false, err = %v", code, err)
 			}

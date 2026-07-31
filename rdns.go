@@ -20,22 +20,10 @@ type rdnsResponse struct {
 
 // RDNSGetList returns every reverse DNS entry on the account.
 //
-// An account with no entries answers 200 with an empty array, so this returns
-// an empty slice and a nil error. Measured against the live API. See
-// [Client.ServerGetList] for why that differs per collection.
+// An account with none gets an empty slice and a nil error. See [fetchList] for
+// why that takes normalising.
 func (c *Client) RDNSGetList(ctx context.Context) ([]RDNS, error) {
-	const op = "rdns list"
-
-	list, err := fetch[[]rdnsResponse](ctx, c, op, http.MethodGet, "/rdns", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	entries := make([]RDNS, 0, len(list))
-	for i := range list {
-		entries = append(entries, list[i].RDNS)
-	}
-	return entries, nil
+	return fetchList(ctx, c, "rdns list", "/rdns", func(e rdnsResponse) RDNS { return e.RDNS })
 }
 
 // RDNSGet returns the reverse DNS entry for one address.

@@ -114,24 +114,10 @@ type cancellationResponse struct {
 
 // ServerGetList returns every dedicated server on the account.
 //
-// An account with no dedicated servers answers 200 with an empty array, so this
-// returns an empty slice and a nil error. That is measured against the live API
-// rather than inferred. Robot is not consistent about this across collections,
-// and [Client.IPGetList], [Client.KeyGetList] and [Client.FailoverGetList]
-// answer the same situation with a 404.
+// An account with none gets an empty slice and a nil error. See [fetchList] for
+// why that takes normalising.
 func (c *Client) ServerGetList(ctx context.Context) ([]Server, error) {
-	const op = "server list"
-
-	list, err := fetch[[]serverResponse](ctx, c, op, http.MethodGet, "/server", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	servers := make([]Server, 0, len(list))
-	for i := range list {
-		servers = append(servers, list[i].Server)
-	}
-	return servers, nil
+	return fetchList(ctx, c, "server list", "/server", func(e serverResponse) Server { return e.Server })
 }
 
 // ServerGet returns the server with the given Robot server number.

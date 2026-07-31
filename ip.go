@@ -2,7 +2,6 @@ package hrobot
 
 import (
 	"context"
-	"net/http"
 )
 
 // IP is a single IPv4 address assigned to a server.
@@ -41,20 +40,8 @@ type ipResponse struct {
 
 // IPGetList returns every single IPv4 address on the account.
 //
-// An account with no single addresses answers 404, so this returns an [Error]
-// with [ErrorCodeNotFound] rather than an empty slice. Measured against the
-// live API. See [Client.ServerGetList] for why that differs per collection.
+// An account with none gets an empty slice and a nil error. See [fetchList] for
+// why that takes normalising.
 func (c *Client) IPGetList(ctx context.Context) ([]IP, error) {
-	const op = "ip list"
-
-	list, err := fetch[[]ipResponse](ctx, c, op, http.MethodGet, "/ip", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	ips := make([]IP, 0, len(list))
-	for i := range list {
-		ips = append(ips, list[i].IP)
-	}
-	return ips, nil
+	return fetchList(ctx, c, "ip list", "/ip", func(e ipResponse) IP { return e.IP })
 }

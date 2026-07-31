@@ -33,22 +33,10 @@ type failoverResponse struct {
 
 // FailoverGetList returns every failover address on the account.
 //
-// An account with no failover addresses answers 404, so this returns an [Error]
-// with [ErrorCodeNotFound] rather than an empty slice. Measured against the
-// live API. See [Client.ServerGetList] for why that differs per collection.
+// An account with none gets an empty slice and a nil error. See [fetchList] for
+// why that takes normalising.
 func (c *Client) FailoverGetList(ctx context.Context) ([]Failover, error) {
-	const op = "failover list"
-
-	list, err := fetch[[]failoverResponse](ctx, c, op, http.MethodGet, "/failover", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	addresses := make([]Failover, 0, len(list))
-	for i := range list {
-		addresses = append(addresses, list[i].Failover)
-	}
-	return addresses, nil
+	return fetchList(ctx, c, "failover list", "/failover", func(e failoverResponse) Failover { return e.Failover })
 }
 
 // FailoverGet returns one failover address.

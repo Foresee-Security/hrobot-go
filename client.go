@@ -295,6 +295,35 @@ func fetch[T any](ctx context.Context, c *Client, op, method, path string, form 
 	return out, nil
 }
 
+// fetchList performs one call against a collection endpoint and decodes it into
+// a slice of T, unwrapping each element from its envelope with pick.
+//
+// It also owns what an empty collection means, because Robot does not answer
+// that consistently. The server and reverse-DNS collections return 200 with an
+// empty array, while the IP, key and failover collections return 404 with
+// NOT_FOUND. Both are normalised to an empty slice and a nil error, so a caller
+// iterating results does not need to know which kind of endpoint it asked.
+//
+// The normalisation is deliberately narrow. Only NOT_FOUND is treated as empty.
+// A 404 carrying a specific code such as SERVER_NOT_FOUND, and a 404 with no
+// error document at all, both still fail, so a request aimed at a path that
+// does not exist stays loud instead of reading as an empty result.
+func fetchList[E, T any](ctx context.Context, c *Client, op, path string, pick func(E) T) ([]T, error) {
+	envelopes, err := fetch[[]E](ctx, c, op, http.MethodGet, path, nil)
+	if err != nil {
+		if IsError(err, ErrorCodeNotFound) {
+			return []T{}, nil
+		}
+		return nil, err
+	}
+
+	out := make([]T, 0, len(envelopes))
+	for i := range envelopes {
+		out = append(out, pick(envelopes[i]))
+	}
+	return out, nil
+}
+
 // readCapped reads at most maxResponseBytes, and reports a body that exceeds
 // it rather than silently returning a truncated document that would then fail
 // to parse for a reason the caller cannot diagnose.

@@ -202,6 +202,129 @@ func TestClientValidateCredentials(t *testing.T) {
 	}
 }
 
+// listMethods is every collection endpoint, so the empty-collection policy can
+// be asserted once for all of them rather than five times.
+var listMethods = []struct {
+	name string
+	path string
+	call func(context.Context, *hrobot.Client) (int, error)
+}{
+	{"ServerGetList", "/server", func(ctx context.Context, c *hrobot.Client) (int, error) {
+		v, err := c.ServerGetList(ctx)
+		return len(v), err
+	}},
+	{"KeyGetList", "/key", func(ctx context.Context, c *hrobot.Client) (int, error) {
+		v, err := c.KeyGetList(ctx)
+		return len(v), err
+	}},
+	{"IPGetList", "/ip", func(ctx context.Context, c *hrobot.Client) (int, error) {
+		v, err := c.IPGetList(ctx)
+		return len(v), err
+	}},
+	{"RDNSGetList", "/rdns", func(ctx context.Context, c *hrobot.Client) (int, error) {
+		v, err := c.RDNSGetList(ctx)
+		return len(v), err
+	}},
+	{"FailoverGetList", "/failover", func(ctx context.Context, c *hrobot.Client) (int, error) {
+		v, err := c.FailoverGetList(ctx)
+		return len(v), err
+	}},
+}
+
+// TestEmptyCollectionsNormalise pins the policy that fetchList owns.
+//
+// Robot answers an empty collection two different ways depending on the
+// endpoint, measured against the live API. Both must reach the caller as an
+// empty slice, so that iterating a result never depends on knowing which kind
+// of endpoint was asked.
+func TestEmptyCollectionsNormalise(t *testing.T) {
+	t.Parallel()
+
+	shapes := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{
+			name:   "200 with an empty array",
+			status: http.StatusOK,
+			body:   `[]`,
+		},
+		{
+			name:   "404 with NOT_FOUND",
+			status: http.StatusNotFound,
+			body:   `{"error":{"code":"NOT_FOUND","message":"No keys found","status":404}}`,
+		},
+	}
+
+	for _, shape := range shapes {
+		for _, lm := range listMethods {
+			t.Run(shape.name+"/"+lm.name, func(t *testing.T) {
+				t.Parallel()
+
+				c, rec := newServer(t, serveBody(shape.status, shape.body))
+
+				n, err := lm.call(t.Context(), c)
+				if err != nil {
+					t.Fatalf("%s: %v", lm.name, err)
+				}
+				if n != 0 {
+					t.Errorf("got %d items, want 0", n)
+				}
+				wantRequest(t, rec.only(t), http.MethodGet, lm.path)
+			})
+		}
+	}
+}
+
+// TestNonEmptyFailuresStayLoud is the other half of the policy. Normalising
+// every 404 would make a request aimed at a path that does not exist read as
+// an empty result, which is the failure the narrow rule exists to avoid.
+func TestNonEmptyFailuresStayLoud(t *testing.T) {
+	t.Parallel()
+
+	shapes := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{
+			name:   "404 with a specific code",
+			status: http.StatusNotFound,
+			body:   `{"error":{"code":"SERVER_NOT_FOUND","message":"server not found","status":404}}`,
+		},
+		{
+			name:   "404 with no error document",
+			status: http.StatusNotFound,
+			body:   `<html>404 Not Found</html>`,
+		},
+		{
+			name:   "401 unauthorized",
+			status: http.StatusUnauthorized,
+			body:   `{"error":{"code":"UNAUTHORIZED","message":"Unauthorized","status":401}}`,
+		},
+		{
+			name:   "502 from an intermediary",
+			status: http.StatusBadGateway,
+			body:   `<html>502 Bad Gateway</html>`,
+		},
+	}
+
+	for _, shape := range shapes {
+		for _, lm := range listMethods {
+			t.Run(shape.name+"/"+lm.name, func(t *testing.T) {
+				t.Parallel()
+
+				c, _ := newServer(t, serveBody(shape.status, shape.body))
+
+				if _, err := lm.call(t.Context(), c); err == nil {
+					t.Fatalf("%s returned nil error, want a failure", lm.name)
+				}
+			})
+		}
+	}
+}
+
 func TestClientRedactsPassword(t *testing.T) {
 	t.Parallel()
 
