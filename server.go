@@ -114,8 +114,10 @@ type cancellationResponse struct {
 
 // ServerGetList returns every dedicated server on the account.
 //
-// An account with none gets an empty slice and a nil error. See [fetchList] for
-// why that takes normalising.
+// An account with none gets an empty slice and a nil error. Robot answers an
+// empty collection two different ways depending on the endpoint, and this
+// normalises both. See the Empty collections section of the package
+// documentation.
 func (c *Client) ServerGetList(ctx context.Context) ([]Server, error) {
 	return fetchList(ctx, c, "server list", "/server", func(e serverResponse) Server { return e.Server })
 }

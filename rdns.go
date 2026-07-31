@@ -20,8 +20,10 @@ type rdnsResponse struct {
 
 // RDNSGetList returns every reverse DNS entry on the account.
 //
-// An account with none gets an empty slice and a nil error. See [fetchList] for
-// why that takes normalising.
+// An account with none gets an empty slice and a nil error. Robot answers an
+// empty collection two different ways depending on the endpoint, and this
+// normalises both. See the Empty collections section of the package
+// documentation.
 func (c *Client) RDNSGetList(ctx context.Context) ([]RDNS, error) {
 	return fetchList(ctx, c, "rdns list", "/rdns", func(e rdnsResponse) RDNS { return e.RDNS })
 }

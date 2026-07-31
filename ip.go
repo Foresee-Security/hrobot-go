@@ -40,8 +40,10 @@ type ipResponse struct {
 
 // IPGetList returns every single IPv4 address on the account.
 //
-// An account with none gets an empty slice and a nil error. See [fetchList] for
-// why that takes normalising.
+// An account with none gets an empty slice and a nil error. Robot answers an
+// empty collection two different ways depending on the endpoint, and this
+// normalises both. See the Empty collections section of the package
+// documentation.
 func (c *Client) IPGetList(ctx context.Context) ([]IP, error) {
 	return fetchList(ctx, c, "ip list", "/ip", func(e ipResponse) IP { return e.IP })
 }

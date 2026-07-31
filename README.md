@@ -1,181 +1,393 @@
-# hrobot-go: a Go client for the Hetzner Robot Webservice
+# hrobot-go
 
-The Robot Webservice manages Hetzner's dedicated (bare-metal) servers. It is a
-different API from Hetzner Cloud, with different credentials and a different
-endpoint, so `hcloud-go` is not a substitute for it.
-
-Hetzner's own API documentation lives at
-[robot.your-server.de](https://robot.your-server.de/doc/webservice/en.html).
+A Go client for the **Hetzner Robot Webservice**, the API that manages Hetzner's
+dedicated (bare-metal) servers.
 
 ```go
 import "github.com/Foresee-Security/hrobot-go"
+```
 
-c := hrobot.NewBasicAuthClient("user", "pass")
+No dependencies. Go 1.26 or later.
 
-ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-defer cancel()
+---
 
-servers, err := c.ServerGetList(ctx)
-if err != nil {
-    return fmt.Errorf("list servers: %w", err)
+> ### Robot is not Hetzner Cloud
+>
+> These are two unrelated APIs, and confusing them is the first mistake to
+> avoid. **Robot** manages physical servers billed monthly at
+> `robot-ws.your-server.de` with HTTP basic auth. **Cloud** manages virtual
+> machines billed hourly at `api.hetzner.cloud` with a bearer token. They share
+> no credentials and no endpoint. If you want Cloud, you want
+> [`hcloud-go`](https://github.com/hetznercloud/hcloud-go) instead.
+
+---
+
+## Contents
+
+- [Getting started](#getting-started)
+- [Credentials](#credentials)
+- [Deadlines and timeouts](#deadlines-and-timeouts)
+- [Handling errors](#handling-errors)
+- [Common tasks](#common-tasks)
+- [Gotchas at a glance](#gotchas-at-a-glance)
+- [What is implemented](#what-is-implemented)
+- [About this fork](#about-this-fork)
+- [Project status](#project-status)
+- [Development](#development)
+
+## Getting started
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/Foresee-Security/hrobot-go"
+)
+
+func main() {
+	err := run()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	c := hrobot.NewBasicAuthClient("user", "pass")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	servers, err := c.ServerGetList(ctx)
+	if err != nil {
+		return fmt.Errorf("list servers: %w", err)
+	}
+
+	for i := range servers {
+		s := &servers[i]
+		fmt.Printf("%d  %-20s %-10s %s\n", s.ServerNumber, s.Name, s.DC, s.Status)
+	}
+	return nil
 }
 ```
 
-Credentials are a **Webservice user**, created under Settings in the Robot web
-interface. They are not the Hetzner account login and not a Cloud API token.
+The `run` split is not ceremony. `log.Fatal` calls `os.Exit`, which skips
+deferred functions, so a `defer cancel()` written beside it never runs. Ranging
+by index avoids copying a 200-byte `Server` on every iteration.
+
+The package is named `hrobot`, so the import needs no alias despite the
+`hrobot-go` path.
+
+## Credentials
+
+Robot needs a **Webservice user**, created under Settings in the Robot web
+interface. It is not your Hetzner account login and not a Cloud API token.
+
+> **Never retry a rejected credential.** Hetzner blocks the calling IP for ten
+> minutes after three failed logins, which takes out every other process on that
+> address too. Treat `ErrorCodeUnauthorized` as terminal.
+
+To check credentials without assuming the account owns anything:
+
+```go
+if err := c.ValidateCredentials(ctx); err != nil {
+	return fmt.Errorf("robot credentials rejected: %w", err)
+}
+```
+
+A nil return means the credentials authenticated. It does not mean the account
+owns any servers.
+
+Credentials can be rotated on a live client, safely, while requests are in
+flight:
+
+```go
+if err := c.SetCredentials(newUser, newPass); err != nil {
+	return err   // empty values are rejected and nothing is changed
+}
+```
+
+## Deadlines and timeouts
+
+Every method that reaches the network takes a `context.Context` first and
+honours its deadline and cancellation.
+
+A client from `NewBasicAuthClient` also carries a **30-second per-request
+timeout**, so a caller who passes a context without a deadline is still bounded.
+
+```go
+c := hrobot.NewBasicAuthClient("user", "pass",
+	hrobot.WithTimeout(10*time.Second),
+)
+```
+
+Options may be given in any order. Supplying your own transport hands the bound
+back to you:
+
+```go
+c := hrobot.NewBasicAuthClient("user", "pass",
+	hrobot.WithHTTPClient(myInstrumentedClient),   // your timeout, your policy
+	hrobot.WithTimeout(10*time.Second),            // retimes a copy, not yours
+)
+```
+
+## Handling errors
+
+Three kinds of failure are distinguishable, and which one you get tells you
+where the problem is.
+
+**1. The API rejected the request.** An `Error` carrying Robot's own code. Match
+it with `IsError`, which unwraps, so wrapping with `%w` upstream does not break
+the match.
+
+```go
+_, err := c.ServerGet(ctx, id)
+switch {
+case hrobot.IsError(err, hrobot.ErrorCodeServerNotFound):
+	// not on this account
+case hrobot.IsError(err, hrobot.ErrorCodeRateLimitExceeded):
+	// back off, see the note below
+case err != nil:
+	return err
+}
+```
+
+**2. Something between you and the API failed.** A `StatusError`, produced when
+the body was not a Robot error document, which is what a proxy or load balancer
+returns. It carries the status so you can tell a retryable 5xx from a terminal
+4xx.
+
+```go
+var se hrobot.StatusError
+if errors.As(err, &se) && se.StatusCode >= 500 {
+	// worth retrying
+}
+```
+
+**3. The call was wrong before it was sent.** A sentinel such as
+`ErrInvalidServerID`, `ErrEmptyIP` or `ErrNilInput`. These never reach the
+network, so they cost nothing and cannot be rate limited.
+
+> **Rate limits arrive as HTTP 403, not 429.** Code that branches on 429 will
+> not see them. There is no built-in retry or backoff.
+
+## Common tasks
+
+### Boot a server into the rescue system
+
+Arming a boot configuration **does not restart anything**. It decides what the
+machine boots next. Restarting it is a separate, deliberate step.
+
+```go
+rescue, err := c.BootRescueSet(ctx, id, &hrobot.RescueSetInput{
+	OS:            "linux",
+	AuthorizedKey: fingerprint,   // omit to get a generated password instead
+})
+if err != nil {
+	return err
+}
+
+// Capture this now. A later GET on an inactive configuration will not have it.
+password := rescue.Password
+
+// Nothing has rebooted yet. This is what enters the rescue system.
+if _, err := c.ResetSet(ctx, id, &hrobot.ResetSetInput{
+	Type: hrobot.ResetTypeHardware,
+}); err != nil {
+	return err
+}
+```
+
+### Choose a reset type the server actually supports
+
+```go
+reset, err := c.ResetGet(ctx, id)
+if err != nil {
+	return err
+}
+if !slices.Contains(reset.Type, hrobot.ResetTypePower) {
+	// this server has no graceful option, decide deliberately
+}
+```
+
+`ResetTypeManual` emails a data centre technician. It is not automation.
+`ResetTypePowerLong` leaves the machine **off** and needs a following
+`ResetTypePower` to come back.
+
+### Read a field that changes shape
+
+Boot fields hold the value in force while active, and the menu of choices while
+inactive.
+
+```go
+rescue, err := c.BootRescueGet(ctx, id)
+if err != nil {
+	return err
+}
+
+if rescue.Active {
+	fmt.Println("running:", rescue.OS[0])
+} else {
+	fmt.Println("available:", strings.Join(rescue.OS, ", "))
+}
+```
+
+Check `Active` rather than inferring from the length. A menu can legitimately
+contain one item.
+
+### Upload an SSH key
+
+```go
+key, err := c.KeySet(ctx, &hrobot.KeySetInput{
+	Name: "deploy",
+	Data: string(pubkey),
+})
+if hrobot.IsError(err, hrobot.ErrorCodeKeyAlreadyExists) {
+	// already there, carry on
+}
+```
+
+### List things that might not exist
+
+Every list method returns an **empty slice and a nil error** when the account
+owns nothing, on every collection. You do not need to special-case it.
+
+```go
+keys, err := c.KeyGetList(ctx)   // no keys -> len(keys) == 0, err == nil
+if err != nil {
+	return err
+}
+```
+
+This is normalisation on our side. The raw API answers an empty collection two
+different ways depending on the endpoint, which is
+[documented in detail](docs/BEHAVIOUR.md#4-empty-collections-are-answered-two-different-ways).
+
+## Gotchas at a glance
+
+The full catalogue, with evidence for every claim, is in
+**[docs/BEHAVIOUR.md](docs/BEHAVIOUR.md)**. The ones most likely to bite:
+
+| Gotcha | Detail |
+|---|---|
+| Three failed logins block your IP for ten minutes | [Authentication](docs/BEHAVIOUR.md#2-authentication-and-the-lockout-that-bites-automation) |
+| Rate limits are HTTP **403**, not 429 | [Rate limiting](docs/BEHAVIOUR.md#3-rate-limiting-arrives-as-403) |
+| Empty collections answer 200 `[]` or 404, per endpoint | [Empty collections](docs/BEHAVIOUR.md#4-empty-collections-are-answered-two-different-ways) |
+| `os`, `dist`, `lang`, `arch` change JSON type with state | [Changing types](docs/BEHAVIOUR.md#5-fields-that-change-json-type-with-state) |
+| `BootLinuxSet` arms a destructive reinstall on the next boot | [Booting](docs/BEHAVIOUR.md#10-booting-is-two-steps-and-one-of-them-is-destructive) |
+| `power_long` leaves the server **off** | [Reset types](docs/BEHAVIOUR.md#11-reset-types-are-per-server-and-one-of-them-involves-a-human) |
+| `ResetTypeManual` creates a human ticket | [Reset types](docs/BEHAVIOUR.md#11-reset-types-are-per-server-and-one-of-them-involves-a-human) |
+| `Server.Traffic` is a string like `"5 TB"` | [Field surprises](docs/BEHAVIOUR.md#12-field-level-surprises) |
+| `Subnet.Mask` is a string, `IP.Mask` is a number | [Field surprises](docs/BEHAVIOUR.md#12-field-level-surprises) |
+| Four error-code constants are unverified | [Error codes](docs/BEHAVIOUR.md#8-error-codes) |
+
+## What is implemented
+
+| Area | Methods |
+|---|---|
+| Server | `ServerGetList` `ServerGet` `ServerSetName` `ServerCancellationWithdraw` |
+| Boot | `BootRescueGet/Set/Delete` `BootLinuxGet/Set/Delete` |
+| Reset | `ResetGet` `ResetSet` |
+| SSH keys | `KeyGetList` `KeySet` |
+| IP | `IPGetList` |
+| Reverse DNS | `RDNSGetList` `RDNSGet` |
+| Failover | `FailoverGetList` `FailoverGet` |
+| Client | `ValidateCredentials` `SetCredentials` `GetVersion` |
+
+**Not implemented:** firewall (including the `rules[output]` egress direction),
+vSwitch, Storage Box, subnet, traffic, Wake on LAN, and the ordering tree.
+Firewall is the one we expect to need first.
+
+`RobotClient` is exported for test doubles and covers everything that reaches
+the network. Prefer declaring your own narrower interface naming only the calls
+you make. Constructors return the concrete `*Client`, which satisfies both.
 
 ## About this fork
 
-This is Foresee Security's actively developed fork. We use it in production to
-drive bare-metal analysis hosts, so we treat it as code we own rather than as a
+Foresee Security's actively developed fork. We use it in production to drive
+bare-metal analysis hosts, so we treat it as code we own rather than a
 dependency we track. The lineage is nl2go, then
 [syself](https://github.com/syself/hrobot-go), then here. Upstream is kept as a
-git remote and we will merge from it where that is useful, but we are not
-constrained by it, and the exported surface has already diverged.
+git remote and we merge from it where useful, but we are not constrained by it.
 
-Import `github.com/Foresee-Security/hrobot-go`, not the upstream path. The
-package is named `hrobot`, so no import alias is needed.
+Import `github.com/Foresee-Security/hrobot-go`, not the upstream path.
 
-## Quality gate
+### Substantive divergence from upstream
+
+**Bugs fixed.** `ServerReverse` called `POST /server/{id}/reversal`, a path the
+Robot API does not define. `Cancellation.Reservation` was tagged `reservation`
+where the API sends `reserved`, so it never populated. `Failover` dropped
+`server_ipv6_net` and `Key` dropped `created_at`. None were catchable by the
+old suite, whose fixture server answered every request identically regardless
+of method or path.
+
+**Security.** Caller-supplied path segments are escaped, enforced by the type
+system rather than convention. Cross-origin redirects are refused, because Go
+compares hostnames when deciding whether to resend `Authorization`, which drops
+the port and permits an https to http downgrade on the same host. Credentials
+are unexported and redacted in `String` and `LogValue`. Response bodies are
+capped at 8 MiB.
+
+**API.** One package instead of `client` plus `models`. Context on every call.
+A 30-second default timeout where a bare `http.Client` previously meant none.
+Arguments validated before any request. Errors wrapped with the operation and
+matched with `errors.As`. No `any` in the exported surface. Construction
+options instead of setters that mutated a live client.
+
+## Project status
+
+Honest summary rather than a badge.
+
+**The code is production-grade.** Zero findings across 38 linters, no
+`//nolint`, no TODOs, no dependencies, 97% statement coverage where the
+guarantees are verified by mutation rather than by line count.
+
+**It is not production-proven.** Three things a reader should weigh:
+
+1. **It has never run against a real dedicated server.** Measurements were taken
+   on an account owning zero of them, so every server-scoped success path rests
+   on documentation and fixtures. The failure paths were confirmed live.
+2. **Firewall endpoints are absent**, and they are the ones we need first.
+3. **There is no CI.** The gate is reproducible but runs by hand.
+
+## Development
 
 `make check` runs the same gate Voltz runs against its own Go components, with
-the same pinned tools: `go vet`, `go build`, `golangci-lint` 2.12.2 across 38
-linters, `go test -race`, `govulncheck`, and `nilaway`, on Go 1.26.5.
+the same pinned tools: `go vet`, `go build`, `golangci-lint` across 38 linters,
+`go test -race`, `govulncheck` and `nilaway`.
 
-It passes with zero lint issues, zero vulnerabilities, and 97% statement
-coverage. nilaway reports one finding, a false positive on `http.Client.Do`
-tracked as nilaway issue #126, which the `nilaway` target filters by the same
-narrow rule Voltz uses. The filter suppresses only that pattern, prints the
-count so the exemption cannot go quiet, and fails on anything else.
+```sh
+make check      # the full gate
+make test       # go test -race
+make cover      # coverage report
+```
 
-Coverage is not the measure we trust here. At 96% the suite still could not
-tell whether the default timeout, the transport seam or the credential guard
-existed at all: deleting any of the three left the whole gate green. Those are
-pinned now, and the checks that matter are mutation checks rather than the
-percentage.
+nilaway reports one finding here, a false positive on `http.Client.Do` tracked
+as nilaway issue #126, which the `nilaway` target filters by the same narrow
+rule Voltz uses. It suppresses only that pattern, prints the count so the
+exemption cannot go quiet, and fails on anything else.
 
-The module has **no dependencies**. There is no `go.sum`.
+Coverage is not the measure we trust. At 96% the suite still could not tell
+whether the default timeout, the transport seam or the credential guard existed
+at all, since deleting any of the three left the whole gate green. They are
+pinned now. When changing behaviour, check that a test fails when you break it,
+rather than checking that the percentage held.
 
-The client has also been run against the live Robot Webservice on a real
-account, which is the only way to settle behaviour fixtures can only assume.
-That run confirmed the error codes this client keys on, that a listing with
-nothing in it comes back as 200 with an empty array rather than a 404, and that
-a rejected argument never reaches the network.
+### Contributing
 
-## What changed from upstream
+Issues and pull requests welcome. Where a change is generally useful and not
+specific to how we operate, we would rather send it upstream than keep it here.
 
-### Bugs
+If you observe a behaviour that contradicts [docs/BEHAVIOUR.md](docs/BEHAVIOUR.md),
+that is a valuable report. Several entries there are marked unverified
+specifically so they can be confirmed or removed.
 
-Four defects were found by checking the code against Hetzner's published API
-documentation. The previous test suite could not catch any of them, because its
-fixture server answered every request with the same document regardless of
-method or path, so nothing verified where a request actually went.
-
-- **`ServerReverse` called an endpoint that does not exist.** It issued
-  `POST /server/{id}/reversal`. The Robot Webservice defines no `reversal`
-  path. Withdrawing a cancellation is `DELETE /server/{id}/cancellation`. The
-  method is now `ServerCancellationWithdraw` and calls that.
-- **`Cancellation.Reservation` never populated.** It was tagged `reservation`.
-  The API sends `reserved`. The field is now `Reserved`, tagged to match.
-- **`Failover` dropped `server_ipv6_net`.** The field was absent from the
-  struct, so the value was discarded for every failover address.
-- **`Key` dropped `created_at`.** Same cause, same effect.
-
-### Security
-
-- **Path segments built from caller input are now escaped, and the compiler
-  enforces it.** `RDNSGet` and `FailoverGet` interpolated their argument
-  straight into the URL, so a value containing a slash addressed a different
-  endpoint than the method named. Request paths are now an `endpoint` type
-  built by one of two constructors. A literal still converts implicitly, so
-  `"/server"` reads normally, but a hand-concatenated path no longer compiles.
-- **Redirects to another origin are refused.** Go decides whether to resend
-  `Authorization` by comparing hostnames, which drops the port and ignores the
-  scheme, so credentials were replayed to a redirect target on a different port
-  and would survive an https to http downgrade on the same host. A redirect
-  that stays on the configured origin is still followed.
-- **Credentials are unexported and redacted.** `Username` and `Password` were
-  exported fields, so any `%+v` wrote the password wherever that landed.
-  `String` and `LogValue` mask it, and redaction lives on the type rather than
-  asking every call site to remember.
-- **Response bodies are capped at 8 MiB** and an oversize body is reported as
-  `ErrResponseTooLarge` rather than truncated into a parse failure nobody can
-  diagnose.
-
-### API
-
-- **One package.** `models` is gone and its types live in the root package, so
-  a caller has one import instead of two. The wire envelope types
-  (`ServerResponse`, `KeyResponse`, and the rest) are unexported, since they
-  were never anything a caller needed.
-- **Context on every call.** Every method that performs I/O takes a
-  `context.Context` first and builds its request with
-  `http.NewRequestWithContext`. Nothing here could previously be cancelled.
-- **Bounded by default.** `NewBasicAuthClient` built a bare `&http.Client{}`,
-  which in Go means no timeout at all. It now carries 30 seconds.
-- **Arguments validated before the request.** A non-positive server ID, an
-  empty IP, or a nil input struct returns a sentinel error immediately instead
-  of a guaranteed 404, or, for the nil input, a panic across the API boundary.
-- **Errors carry the operation and wrap.** Every returned error names the call
-  that produced it. `IsError` uses `errors.As`, so adding context with `%w`
-  does not break code matching. A failure whose body is not a Robot error
-  document, which is what a proxy produces, is now a typed `StatusError`
-  carrying the status rather than an unmatchable string.
-- **No `any` in the public surface.** Six fields were `any` because the API
-  returns `os`, `arch`, `dist`, `lang` and `cancellation_reason` as a bare
-  scalar while a resource is active and as an array of the available choices
-  while it is not. They are now `StringList` and `IntList`, which decode both
-  shapes into a slice. A one-element list means that value is the active one.
-- **Options instead of setters, and they commute.** `SetBaseURL` and
-  `SetUserAgent` mutated a live client. They are now `WithBaseURL` and
-  `WithUserAgent` construction options, alongside `WithHTTPClient` and
-  `WithTimeout`. The order you write them in does not change the result, and a
-  client you supply is never retimed underneath you. `SetCredentials` stays,
-  guarded, so credentials can be rotated on a running client.
-- **Empty collections look the same everywhere.** Robot answers an empty
-  collection with 200 and an empty array on some endpoints and 404 on others,
-  so three of the five list methods used to return an error to describe an
-  account that simply owns nothing. They all return an empty slice now. The
-  normalisation is narrow: only `NOT_FOUND` counts as empty, so a request
-  aimed at a path that does not exist still fails.
-- **Constructors return `*Client`,** not the interface, following "accept
-  interfaces, return structs". `RobotClient` still exists for test doubles,
-  covering what a substitute can meaningfully stand in for. A test asserts
-  every exported method on `*Client` is either declared there or listed as
-  excluded with a reason, so the interface cannot quietly drift out of date.
-- **Acronyms are cased correctly:** `Rdns` is `RDNS`, `Os` is `OS`, `Dc` is
-  `DC`, `Vnc` is `VNC`, `Wol` is `WOL`, `SeparateMac` is `SeparateMAC`. Reset
-  types are a typed `ResetType` rather than bare strings.
-- **`Subnet` carries only `ip` and `mask`,** the two fields the server
-  endpoints actually return. The other nine were never populated.
-
-### Tests
-
-The suite was rewritten from `gopkg.in/check.v1` onto the standard library,
-which removed the last three dependencies. It is table-driven, asserts the
-method and path of every request, and asserts that a rejected argument produces
-**no request at all**. Coverage went from 90.8% to 97.2%.
-
-The request assertions are the part that matters. The previous suite pointed
-every test at a fixture server that answered any request with the same
-document, so it could only ever verify decoding. That is how a method calling
-an endpoint which does not exist passed its own test for years.
-
-Where a guarantee is not observable from outside the package, such as how the
-constructor wires the `http.Client`, a small in-package test covers it and
-everything else stays external.
-
-## Not implemented
-
-The client covers server, boot, reset, key, IP, reverse DNS and failover. The
-firewall, vSwitch, Storage Box, traffic, subnet, Wake on LAN and ordering
-endpoints are absent. Firewall is the one we expect to need first.
-
-Contributions and issues are welcome. Where a change is generally useful and
-not specific to how we operate, we would rather send it upstream than keep it
-here.
-
-## Releasing
+### Releasing
 
 Update `Version` in `client.go`, then:
 
@@ -186,3 +398,7 @@ export RELEASE_TAG=vX.Y.Z
 git tag -a ${RELEASE_TAG} -m ${RELEASE_TAG}
 git push origin ${RELEASE_TAG}
 ```
+
+## Licence
+
+MIT, inherited from upstream. See [LICENSE](LICENSE).

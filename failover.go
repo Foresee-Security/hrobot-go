@@ -33,8 +33,10 @@ type failoverResponse struct {
 
 // FailoverGetList returns every failover address on the account.
 //
-// An account with none gets an empty slice and a nil error. See [fetchList] for
-// why that takes normalising.
+// An account with none gets an empty slice and a nil error. Robot answers an
+// empty collection two different ways depending on the endpoint, and this
+// normalises both. See the Empty collections section of the package
+// documentation.
 func (c *Client) FailoverGetList(ctx context.Context) ([]Failover, error) {
 	return fetchList(ctx, c, "failover list", "/failover", func(e failoverResponse) Failover { return e.Failover })
 }
