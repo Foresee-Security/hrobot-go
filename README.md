@@ -42,11 +42,17 @@ package is named `hrobot`, so no import alias is needed.
 the same pinned tools: `go vet`, `go build`, `golangci-lint` 2.12.2 across 38
 linters, `go test -race`, `govulncheck`, and `nilaway`, on Go 1.26.5.
 
-It passes with zero lint issues, zero vulnerabilities, and 96% statement
+It passes with zero lint issues, zero vulnerabilities, and 97% statement
 coverage. nilaway reports one finding, a false positive on `http.Client.Do`
 tracked as nilaway issue #126, which the `nilaway` target filters by the same
 narrow rule Voltz uses. The filter suppresses only that pattern, prints the
 count so the exemption cannot go quiet, and fails on anything else.
+
+Coverage is not the measure we trust here. At 96% the suite still could not
+tell whether the default timeout, the transport seam or the credential guard
+existed at all: deleting any of the three left the whole gate green. Those are
+pinned now, and the checks that matter are mutation checks rather than the
+percentage.
 
 The module has **no dependencies**. There is no `go.sum`.
 
@@ -77,9 +83,17 @@ method or path, so nothing verified where a request actually went.
 
 ### Security
 
-- **Path segments built from caller input are now escaped.** `RDNSGet` and
-  `FailoverGet` interpolated their argument straight into the URL, so a value
-  containing a slash addressed a different endpoint than the method named.
+- **Path segments built from caller input are now escaped, and the compiler
+  enforces it.** `RDNSGet` and `FailoverGet` interpolated their argument
+  straight into the URL, so a value containing a slash addressed a different
+  endpoint than the method named. Request paths are now an `endpoint` type
+  built by one of two constructors. A literal still converts implicitly, so
+  `"/server"` reads normally, but a hand-concatenated path no longer compiles.
+- **Redirects to another origin are refused.** Go decides whether to resend
+  `Authorization` by comparing hostnames, which drops the port and ignores the
+  scheme, so credentials were replayed to a redirect target on a different port
+  and would survive an https to http downgrade on the same host. A redirect
+  that stays on the configured origin is still followed.
 - **Credentials are unexported and redacted.** `Username` and `Password` were
   exported fields, so any `%+v` wrote the password wherever that landed.
   `String` and `LogValue` mask it, and redaction lives on the type rather than
@@ -112,12 +126,23 @@ method or path, so nothing verified where a request actually went.
   scalar while a resource is active and as an array of the available choices
   while it is not. They are now `StringList` and `IntList`, which decode both
   shapes into a slice. A one-element list means that value is the active one.
-- **Options instead of setters.** `SetBaseURL` and `SetUserAgent` mutated a
-  live client. They are now `WithBaseURL` and `WithUserAgent` construction
-  options, alongside `WithHTTPClient` and `WithTimeout`. `SetCredentials`
-  stays, guarded, so credentials can be rotated on a running client.
+- **Options instead of setters, and they commute.** `SetBaseURL` and
+  `SetUserAgent` mutated a live client. They are now `WithBaseURL` and
+  `WithUserAgent` construction options, alongside `WithHTTPClient` and
+  `WithTimeout`. The order you write them in does not change the result, and a
+  client you supply is never retimed underneath you. `SetCredentials` stays,
+  guarded, so credentials can be rotated on a running client.
+- **Empty collections look the same everywhere.** Robot answers an empty
+  collection with 200 and an empty array on some endpoints and 404 on others,
+  so three of the five list methods used to return an error to describe an
+  account that simply owns nothing. They all return an empty slice now. The
+  normalisation is narrow: only `NOT_FOUND` counts as empty, so a request
+  aimed at a path that does not exist still fails.
 - **Constructors return `*Client`,** not the interface, following "accept
-  interfaces, return structs". `RobotClient` still exists for test doubles.
+  interfaces, return structs". `RobotClient` still exists for test doubles,
+  covering what a substitute can meaningfully stand in for. A test asserts
+  every exported method on `*Client` is either declared there or listed as
+  excluded with a reason, so the interface cannot quietly drift out of date.
 - **Acronyms are cased correctly:** `Rdns` is `RDNS`, `Os` is `OS`, `Dc` is
   `DC`, `Vnc` is `VNC`, `Wol` is `WOL`, `SeparateMac` is `SeparateMAC`. Reset
   types are a typed `ResetType` rather than bare strings.
@@ -129,7 +154,16 @@ method or path, so nothing verified where a request actually went.
 The suite was rewritten from `gopkg.in/check.v1` onto the standard library,
 which removed the last three dependencies. It is table-driven, asserts the
 method and path of every request, and asserts that a rejected argument produces
-**no request at all**. Coverage went from 90.8% to 96.1%.
+**no request at all**. Coverage went from 90.8% to 97.2%.
+
+The request assertions are the part that matters. The previous suite pointed
+every test at a fixture server that answered any request with the same
+document, so it could only ever verify decoding. That is how a method calling
+an endpoint which does not exist passed its own test for years.
+
+Where a guarantee is not observable from outside the package, such as how the
+constructor wires the `http.Client`, a small in-package test covers it and
+everything else stays external.
 
 ## Not implemented
 
