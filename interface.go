@@ -4,20 +4,31 @@ import "context"
 
 // RobotClient is the Robot Webservice surface [Client] implements.
 //
-// It is provided so that a consumer can substitute a fake in tests, and as a
-// single place to read the whole surface. Prefer declaring a narrower interface
-// naming only the calls you actually make, per the Go convention of defining
-// interfaces where they are consumed. Constructors return the concrete
-// *[Client], which satisfies this and any such narrower interface.
+// It exists so a consumer can substitute a fake in tests without hand-writing
+// the surface, and as one place to read what this client can do. Prefer
+// declaring a narrower interface naming only the calls you actually make, per
+// the Go convention of defining interfaces where they are consumed.
+// Constructors return the concrete *[Client], which satisfies this and any such
+// narrower interface.
 //
-// Every method that performs I/O takes a context as its first parameter, so a
-// caller can cancel a request and impose a deadline. A request made with a
+// It covers what a substitute could meaningfully stand in for, which means
+// everything that performs I/O. Deliberately absent are [Client.GetVersion],
+// which returns a package constant that a fake could only lie about, and
+// [Client.String] and [Client.LogValue], which exist to redact a credential
+// rather than to be substituted. TestRobotClientCoversTheIOSurface pins that
+// list, so a method added to *Client cannot quietly go missing here.
+//
+// Adding a method to this interface is a breaking change for anyone
+// implementing it outside this module. That cost is accepted, because the
+// interface is meant for test doubles in consumers we control rather than as an
+// extension point. A consumer who wants to be insulated from that should
+// declare its own narrower interface.
+//
+// Every method that reaches the network takes a context as its first parameter,
+// so a caller can cancel a request and impose a deadline. A request made with a
 // context carrying no deadline is still bounded by the client's own timeout.
-//
-// Methods that only validate their arguments, such as SetCredentials, take no
-// context because they never reach the network.
+// SetCredentials is the one exception, because it only validates and stores.
 type RobotClient interface {
-	GetVersion() string
 	SetCredentials(username, password string) error
 	ValidateCredentials(ctx context.Context) error
 
