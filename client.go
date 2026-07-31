@@ -269,8 +269,8 @@ var ErrRedirectCrossOrigin = errors.New("hrobot: refusing to follow a redirect t
 // Authorization header. It compares hostnames, which excludes the port and
 // ignores the scheme, so a redirect from https to http on the same host, or to
 // a different port, still carries the credentials. For a basic-auth client that
-// is the whole secret travelling somewhere the caller never named, in the
-// downgrade case over cleartext.
+// sends the password to a destination the caller never named, and on a
+// downgrade it sends it in cleartext.
 //
 // The Robot Webservice is a single documented endpoint and publishes no
 // redirects, so refusing costs nothing that is known to work. A caller who
@@ -389,12 +389,12 @@ func readCapped(r io.Reader) ([]byte, error) {
 // endpoint is a request path that has been built safely, and is what [fetch]
 // and [fetchList] accept.
 //
-// The type is the enforcement. Go converts an untyped string constant to a
+// The type does the enforcing. Go converts an untyped string constant to a
 // named string type implicitly, so a literal path such as "/server" still reads
 // naturally at the call site, and a literal carries no caller input to escape.
 // An expression involving a string variable is typed string and does not
-// convert, so a hand-concatenated path will not compile. Escaping stops being
-// something each new endpoint has to remember.
+// convert, so a hand-concatenated path will not compile. Escaping is therefore
+// not something each new endpoint has to remember.
 type endpoint string
 
 // scopedEndpoint builds a path for a server-scoped resource, such as

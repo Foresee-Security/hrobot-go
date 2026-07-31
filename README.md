@@ -1,6 +1,6 @@
 # hrobot-go
 
-A Go client for the **Hetzner Robot Webservice**, the API that manages Hetzner's
+A Go client for the Hetzner Robot Webservice, the API that manages Hetzner's
 dedicated (bare-metal) servers.
 
 ```go
@@ -9,18 +9,11 @@ import "github.com/Foresee-Security/hrobot-go"
 
 No dependencies. Go 1.26 or later.
 
----
-
-> ### Robot is not Hetzner Cloud
->
-> These are two unrelated APIs, and confusing them is the first mistake to
-> avoid. **Robot** manages physical servers billed monthly at
-> `robot-ws.your-server.de` with HTTP basic auth. **Cloud** manages virtual
-> machines billed hourly at `api.hetzner.cloud` with a bearer token. They share
-> no credentials and no endpoint. If you want Cloud, you want
-> [`hcloud-go`](https://github.com/hetznercloud/hcloud-go) instead.
-
----
+Robot and Hetzner Cloud are separate APIs. Robot manages physical servers
+billed monthly at `robot-ws.your-server.de` with HTTP basic auth. Cloud manages
+virtual machines billed hourly at `api.hetzner.cloud` with a bearer token. The
+credentials and endpoints are not interchangeable. For Cloud, use
+[`hcloud-go`](https://github.com/hetznercloud/hcloud-go).
 
 ## Contents
 
@@ -29,7 +22,7 @@ No dependencies. Go 1.26 or later.
 - [Deadlines and timeouts](#deadlines-and-timeouts)
 - [Handling errors](#handling-errors)
 - [Common tasks](#common-tasks)
-- [Gotchas at a glance](#gotchas-at-a-glance)
+- [Gotchas](#gotchas)
 - [What is implemented](#what-is-implemented)
 - [About this fork](#about-this-fork)
 - [Project status](#project-status)
@@ -76,39 +69,42 @@ func run() error {
 }
 ```
 
-The `run` split is not ceremony. `log.Fatal` calls `os.Exit`, which skips
-deferred functions, so a `defer cancel()` written beside it never runs. Ranging
-by index avoids copying a 200-byte `Server` on every iteration.
+Two details in that example are deliberate. `log.Fatal` calls `os.Exit`, which
+skips deferred functions, so a `defer cancel()` next to it never runs. And
+`Server` is a little over 200 bytes, so ranging by index avoids copying it on
+every iteration.
 
 The package is named `hrobot`, so the import needs no alias despite the
 `hrobot-go` path.
 
 ## Credentials
 
-Robot needs a **Webservice user**, created under Settings in the Robot web
-interface. It is not your Hetzner account login and not a Cloud API token.
+Robot uses a Webservice user, created under Settings in the Robot web
+interface. It is a separate credential from your Hetzner account login and from
+any Cloud API token.
 
-> **Never retry a rejected credential.** Hetzner blocks the calling IP for ten
-> minutes after three failed logins, which takes out every other process on that
-> address too. Treat `ErrorCodeUnauthorized` as terminal.
+Hetzner blocks the calling IP for ten minutes after three failed logins, which
+takes out every other process on that address. Handle
+`ErrorCodeUnauthorized` as terminal rather than retrying it.
 
 To check credentials without assuming the account owns anything:
 
 ```go
-if err := c.ValidateCredentials(ctx); err != nil {
+err := c.ValidateCredentials(ctx)
+if err != nil {
 	return fmt.Errorf("robot credentials rejected: %w", err)
 }
 ```
 
-A nil return means the credentials authenticated. It does not mean the account
-owns any servers.
+A nil return means the credentials authenticated. It says nothing about whether
+the account owns any servers.
 
-Credentials can be rotated on a live client, safely, while requests are in
-flight:
+Credentials can be rotated on a live client while requests are in flight:
 
 ```go
-if err := c.SetCredentials(newUser, newPass); err != nil {
-	return err   // empty values are rejected and nothing is changed
+err := c.SetCredentials(newUser, newPass)
+if err != nil {
+	return err   // empty values are rejected and nothing changes
 }
 ```
 
@@ -117,8 +113,8 @@ if err := c.SetCredentials(newUser, newPass); err != nil {
 Every method that reaches the network takes a `context.Context` first and
 honours its deadline and cancellation.
 
-A client from `NewBasicAuthClient` also carries a **30-second per-request
-timeout**, so a caller who passes a context without a deadline is still bounded.
+A client from `NewBasicAuthClient` also carries a 30-second per-request
+timeout, so a context without a deadline is still bounded.
 
 ```go
 c := hrobot.NewBasicAuthClient("user", "pass",
@@ -126,8 +122,8 @@ c := hrobot.NewBasicAuthClient("user", "pass",
 )
 ```
 
-Options may be given in any order. Supplying your own transport hands the bound
-back to you:
+Options can be given in any order. Supplying your own transport moves the
+timeout responsibility to you:
 
 ```go
 c := hrobot.NewBasicAuthClient("user", "pass",
@@ -138,12 +134,12 @@ c := hrobot.NewBasicAuthClient("user", "pass",
 
 ## Handling errors
 
-Three kinds of failure are distinguishable, and which one you get tells you
-where the problem is.
+There are three kinds of failure, and which one you get tells you where the
+problem is.
 
-**1. The API rejected the request.** An `Error` carrying Robot's own code. Match
-it with `IsError`, which unwraps, so wrapping with `%w` upstream does not break
-the match.
+An `Error` means the API rejected the request. It carries Robot's own code.
+Match it with `IsError`, which unwraps, so wrapping with `%w` upstream does not
+break the match.
 
 ```go
 _, err := c.ServerGet(ctx, id)
@@ -151,59 +147,62 @@ switch {
 case hrobot.IsError(err, hrobot.ErrorCodeServerNotFound):
 	// not on this account
 case hrobot.IsError(err, hrobot.ErrorCodeRateLimitExceeded):
-	// back off, see the note below
+	// back off, see below
 case err != nil:
 	return err
 }
 ```
 
-**2. Something between you and the API failed.** A `StatusError`, produced when
-the body was not a Robot error document, which is what a proxy or load balancer
-returns. It carries the status so you can tell a retryable 5xx from a terminal
-4xx.
+A `StatusError` means something between you and the API failed. It is produced
+when the body was not a Robot error document, which is what a proxy or load
+balancer returns, and carries the status code.
 
 ```go
 var se hrobot.StatusError
 if errors.As(err, &se) && se.StatusCode >= 500 {
-	// worth retrying
+	// retryable
 }
 ```
 
-**3. The call was wrong before it was sent.** A sentinel such as
-`ErrInvalidServerID`, `ErrEmptyIP` or `ErrNilInput`. These never reach the
-network, so they cost nothing and cannot be rate limited.
+A sentinel such as `ErrInvalidServerID`, `ErrEmptyIP` or `ErrNilInput` means
+the call was rejected before it was sent. These never reach the network.
 
-> **Rate limits arrive as HTTP 403, not 429.** Code that branches on 429 will
-> not see them. There is no built-in retry or backoff.
+Rate limits arrive as HTTP 403 rather than 429, so code branching on 429 will
+miss them. There is no built-in retry or backoff.
 
 ## Common tasks
 
 ### Boot a server into the rescue system
 
-Arming a boot configuration **does not restart anything**. It decides what the
-machine boots next. Restarting it is a separate, deliberate step.
+Arming a boot configuration does not restart anything. It decides what the
+machine boots next. Restarting it is a separate step.
 
 ```go
 rescue, err := c.BootRescueSet(ctx, id, &hrobot.RescueSetInput{
 	OS:            "linux",
-	AuthorizedKey: fingerprint,   // omit to get a generated password instead
+	AuthorizedKey: fingerprint,   // omit for a generated password instead
 })
 if err != nil {
 	return err
 }
 
-// Capture this now. A later GET on an inactive configuration will not have it.
+// Capture this now. A later read of an inactive configuration will not have it.
 password := rescue.Password
 
 // Nothing has rebooted yet. This is what enters the rescue system.
-if _, err := c.ResetSet(ctx, id, &hrobot.ResetSetInput{
+_, err = c.ResetSet(ctx, id, &hrobot.ResetSetInput{
 	Type: hrobot.ResetTypeHardware,
-}); err != nil {
+})
+if err != nil {
 	return err
 }
 ```
 
-### Choose a reset type the server actually supports
+`BootLinuxSet` works the same way but arms an installation that erases the
+disk, and it stays armed until deleted. A restart for any unrelated reason will
+run it.
+
+### Choose a reset type the server supports
 
 ```go
 reset, err := c.ResetGet(ctx, id)
@@ -211,18 +210,18 @@ if err != nil {
 	return err
 }
 if !slices.Contains(reset.Type, hrobot.ResetTypePower) {
-	// this server has no graceful option, decide deliberately
+	// this server has no graceful option
 }
 ```
 
-`ResetTypeManual` emails a data centre technician. It is not automation.
-`ResetTypePowerLong` leaves the machine **off** and needs a following
-`ResetTypePower` to come back.
+`ResetTypeManual` emails a data centre technician, so it is not usable for
+automation. `ResetTypePowerLong` leaves the machine off and needs a following
+`ResetTypePower` to bring it back.
 
 ### Read a field that changes shape
 
-Boot fields hold the value in force while active, and the menu of choices while
-inactive.
+Boot fields hold the value in force while active, and the list of available
+options while inactive.
 
 ```go
 rescue, err := c.BootRescueGet(ctx, id)
@@ -237,8 +236,8 @@ if rescue.Active {
 }
 ```
 
-Check `Active` rather than inferring from the length. A menu can legitimately
-contain one item.
+Read `Active` rather than inferring from the length, since a list of options
+can contain one item.
 
 ### Upload an SSH key
 
@@ -248,14 +247,14 @@ key, err := c.KeySet(ctx, &hrobot.KeySetInput{
 	Data: string(pubkey),
 })
 if hrobot.IsError(err, hrobot.ErrorCodeKeyAlreadyExists) {
-	// already there, carry on
+	// already there
 }
 ```
 
 ### List things that might not exist
 
-Every list method returns an **empty slice and a nil error** when the account
-owns nothing, on every collection. You do not need to special-case it.
+Every list method returns an empty slice and a nil error when the account owns
+nothing, on every collection, so there is no need to special-case it.
 
 ```go
 keys, err := c.KeyGetList(ctx)   // no keys -> len(keys) == 0, err == nil
@@ -264,24 +263,24 @@ if err != nil {
 }
 ```
 
-This is normalisation on our side. The raw API answers an empty collection two
-different ways depending on the endpoint, which is
-[documented in detail](docs/BEHAVIOUR.md#4-empty-collections-are-answered-two-different-ways).
+The raw API answers an empty collection two different ways depending on the
+endpoint. This client normalises them, which is
+[described in detail here](docs/BEHAVIOUR.md#4-empty-collections-have-two-different-shapes).
 
-## Gotchas at a glance
+## Gotchas
 
-The full catalogue, with evidence for every claim, is in
-**[docs/BEHAVIOUR.md](docs/BEHAVIOUR.md)**. The ones most likely to bite:
+The full catalogue, with a source for every claim, is in
+[docs/BEHAVIOUR.md](docs/BEHAVIOUR.md). The ones most likely to cause trouble:
 
-| Gotcha | Detail |
+| Behaviour | Detail |
 |---|---|
-| Three failed logins block your IP for ten minutes | [Authentication](docs/BEHAVIOUR.md#2-authentication-and-the-lockout-that-bites-automation) |
-| Rate limits are HTTP **403**, not 429 | [Rate limiting](docs/BEHAVIOUR.md#3-rate-limiting-arrives-as-403) |
-| Empty collections answer 200 `[]` or 404, per endpoint | [Empty collections](docs/BEHAVIOUR.md#4-empty-collections-are-answered-two-different-ways) |
-| `os`, `dist`, `lang`, `arch` change JSON type with state | [Changing types](docs/BEHAVIOUR.md#5-fields-that-change-json-type-with-state) |
-| `BootLinuxSet` arms a destructive reinstall on the next boot | [Booting](docs/BEHAVIOUR.md#10-booting-is-two-steps-and-one-of-them-is-destructive) |
-| `power_long` leaves the server **off** | [Reset types](docs/BEHAVIOUR.md#11-reset-types-are-per-server-and-one-of-them-involves-a-human) |
-| `ResetTypeManual` creates a human ticket | [Reset types](docs/BEHAVIOUR.md#11-reset-types-are-per-server-and-one-of-them-involves-a-human) |
+| Three failed logins block your IP for ten minutes | [Authentication](docs/BEHAVIOUR.md#2-failed-logins-block-your-ip) |
+| Rate limits use HTTP 403, not 429 | [Rate limits](docs/BEHAVIOUR.md#3-rate-limits-use-status-403) |
+| Empty collections answer 200 `[]` or 404 by endpoint | [Empty collections](docs/BEHAVIOUR.md#4-empty-collections-have-two-different-shapes) |
+| `os`, `dist`, `lang`, `arch` change JSON type with state | [Changing types](docs/BEHAVIOUR.md#5-some-fields-change-json-type-with-state) |
+| `BootLinuxSet` arms a disk-erasing reinstall on the next boot | [Boot config](docs/BEHAVIOUR.md#10-arming-a-boot-configuration-does-not-restart-the-server) |
+| `power_long` leaves the server off | [Reset types](docs/BEHAVIOUR.md#11-reset-types-vary-per-server) |
+| `ResetTypeManual` creates a human ticket | [Reset types](docs/BEHAVIOUR.md#11-reset-types-vary-per-server) |
 | `Server.Traffic` is a string like `"5 TB"` | [Field surprises](docs/BEHAVIOUR.md#12-field-level-surprises) |
 | `Subnet.Mask` is a string, `IP.Mask` is a number | [Field surprises](docs/BEHAVIOUR.md#12-field-level-surprises) |
 | Four error-code constants are unverified | [Error codes](docs/BEHAVIOUR.md#8-error-codes) |
@@ -299,61 +298,61 @@ The full catalogue, with evidence for every claim, is in
 | Failover | `FailoverGetList` `FailoverGet` |
 | Client | `ValidateCredentials` `SetCredentials` `GetVersion` |
 
-**Not implemented:** firewall (including the `rules[output]` egress direction),
+Not implemented: firewall (including the `rules[output]` egress direction),
 vSwitch, Storage Box, subnet, traffic, Wake on LAN, and the ordering tree.
 Firewall is the one we expect to need first.
 
 `RobotClient` is exported for test doubles and covers everything that reaches
-the network. Prefer declaring your own narrower interface naming only the calls
-you make. Constructors return the concrete `*Client`, which satisfies both.
+the network. Declaring your own narrower interface naming only the calls you
+make is usually better. Constructors return the concrete `*Client`, which
+satisfies both.
 
 ## About this fork
 
-Foresee Security's actively developed fork. We use it in production to drive
-bare-metal analysis hosts, so we treat it as code we own rather than a
-dependency we track. The lineage is nl2go, then
-[syself](https://github.com/syself/hrobot-go), then here. Upstream is kept as a
-git remote and we merge from it where useful, but we are not constrained by it.
+Foresee Security's fork, actively developed. We use it in production to drive
+bare-metal analysis hosts and treat it as code we own. The lineage is nl2go,
+then [syself](https://github.com/syself/hrobot-go), then here. Upstream is kept
+as a git remote and we merge from it where useful.
 
 Import `github.com/Foresee-Security/hrobot-go`, not the upstream path.
 
-### Substantive divergence from upstream
+### Divergence from upstream
 
-**Bugs fixed.** `ServerReverse` called `POST /server/{id}/reversal`, a path the
-Robot API does not define. `Cancellation.Reservation` was tagged `reservation`
-where the API sends `reserved`, so it never populated. `Failover` dropped
-`server_ipv6_net` and `Key` dropped `created_at`. None were catchable by the
-old suite, whose fixture server answered every request identically regardless
-of method or path.
+Four bugs are fixed. `ServerReverse` called `POST /server/{id}/reversal`, a path
+the Robot API does not define. `Cancellation.Reservation` was tagged
+`reservation` where the API sends `reserved`, so it never populated. `Failover`
+dropped `server_ipv6_net` and `Key` dropped `created_at`. The old test suite
+could not catch any of them, because its fixture server answered every request
+identically regardless of method or path.
 
-**Security.** Caller-supplied path segments are escaped, enforced by the type
-system rather than convention. Cross-origin redirects are refused, because Go
-compares hostnames when deciding whether to resend `Authorization`, which drops
-the port and permits an https to http downgrade on the same host. Credentials
-are unexported and redacted in `String` and `LogValue`. Response bodies are
-capped at 8 MiB.
+On security: caller-supplied path segments are escaped, enforced by the type
+system rather than by convention. Cross-origin redirects are refused, since Go
+compares hostnames when deciding whether to resend `Authorization`, which
+excludes the port and permits an https to http downgrade on the same host.
+Credentials are unexported and redacted in `String` and `LogValue`. Response
+bodies are capped at 8 MiB.
 
-**API.** One package instead of `client` plus `models`. Context on every call.
-A 30-second default timeout where a bare `http.Client` previously meant none.
-Arguments validated before any request. Errors wrapped with the operation and
-matched with `errors.As`. No `any` in the exported surface. Construction
-options instead of setters that mutated a live client.
+On the API surface: one package instead of `client` plus `models`. Context on
+every call. A 30-second default timeout where a bare `http.Client` previously
+meant none. Arguments validated before any request. Errors wrapped with the
+operation and matched with `errors.As`. No `any` in the exported surface.
+Construction options instead of setters that mutated a live client.
 
 ## Project status
 
-Honest summary rather than a badge.
+The code is in good shape. Zero findings across 38 linters, no `//nolint`, no
+TODOs, no dependencies, 97% statement coverage where the guarantees are
+verified by mutation rather than by line count.
 
-**The code is production-grade.** Zero findings across 38 linters, no
-`//nolint`, no TODOs, no dependencies, 97% statement coverage where the
-guarantees are verified by mutation rather than by line count.
+It has not been proven in production, for three reasons.
 
-**It is not production-proven.** Three things a reader should weigh:
+It has never run against a real dedicated server. Measurements were taken on an
+account owning none, so every server-scoped success path rests on documentation
+and fixtures. The failure paths were confirmed live.
 
-1. **It has never run against a real dedicated server.** Measurements were taken
-   on an account owning zero of them, so every server-scoped success path rests
-   on documentation and fixtures. The failure paths were confirmed live.
-2. **Firewall endpoints are absent**, and they are the ones we need first.
-3. **There is no CI.** The gate is reproducible but runs by hand.
+The firewall endpoints are absent, and they are the ones we need first.
+
+There is no CI. The gate is reproducible but runs by hand.
 
 ## Development
 
@@ -367,25 +366,25 @@ make test       # go test -race
 make cover      # coverage report
 ```
 
-nilaway reports one finding here, a false positive on `http.Client.Do` tracked
-as nilaway issue #126, which the `nilaway` target filters by the same narrow
-rule Voltz uses. It suppresses only that pattern, prints the count so the
-exemption cannot go quiet, and fails on anything else.
+nilaway reports one finding, a false positive on `http.Client.Do` tracked as
+nilaway issue #126, which the `nilaway` target filters by the same narrow rule
+Voltz uses. It suppresses only that pattern, prints the count so the exemption
+stays visible, and fails on anything else.
 
-Coverage is not the measure we trust. At 96% the suite still could not tell
-whether the default timeout, the transport seam or the credential guard existed
-at all, since deleting any of the three left the whole gate green. They are
-pinned now. When changing behaviour, check that a test fails when you break it,
+Coverage alone is a weak signal here. At 96% the suite still could not tell
+whether the default timeout, the transport seam or the credential guard
+existed, since deleting any of the three left the whole gate green. Those are
+pinned now. When changing behaviour, check that a test fails when you break it
 rather than checking that the percentage held.
 
 ### Contributing
 
 Issues and pull requests welcome. Where a change is generally useful and not
-specific to how we operate, we would rather send it upstream than keep it here.
+specific to how we operate, we would rather send it upstream.
 
-If you observe a behaviour that contradicts [docs/BEHAVIOUR.md](docs/BEHAVIOUR.md),
-that is a valuable report. Several entries there are marked unverified
-specifically so they can be confirmed or removed.
+A behaviour that contradicts [docs/BEHAVIOUR.md](docs/BEHAVIOUR.md) is a useful
+report. Several entries there are marked unverified so they can be confirmed or
+removed.
 
 ### Releasing
 

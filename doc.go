@@ -1,25 +1,25 @@
 // Package hrobot is a client for the Hetzner Robot Webservice, the API that
 // manages dedicated (bare-metal) servers.
 //
-// # Robot is not Hetzner Cloud
+// # Relationship to Hetzner Cloud
 //
-// These are two unrelated APIs and mixing them up is the first mistake to
-// avoid. Robot manages physical machines, billed monthly, addressed by server
-// number, authenticated with HTTP basic auth against robot-ws.your-server.de.
-// Cloud manages virtual machines, billed hourly, addressed by an integer id,
-// authenticated with a bearer token against api.hetzner.cloud. They share no
-// credentials and no endpoint, and hcloud-go is not a substitute for this
-// package.
+// Robot and Hetzner Cloud are separate APIs. Robot manages physical machines,
+// billed monthly, addressed by server number, authenticated with HTTP basic
+// auth against robot-ws.your-server.de. Cloud manages virtual machines, billed
+// hourly, authenticated with a bearer token against api.hetzner.cloud. The
+// credentials and endpoints are not interchangeable, and hcloud-go does not
+// talk to Robot.
 //
 // # Credentials
 //
-// Robot needs a dedicated Webservice user, created under Settings in the Robot
-// web interface. It is neither the Hetzner account login nor a Cloud API token.
+// Robot uses a Webservice user, created under Settings in the Robot web
+// interface. This is a separate credential from the Hetzner account login and
+// from any Cloud API token.
 //
-// Authentication failures are rate limited by Hetzner at the network level.
-// Three failed logins block the calling IP for ten minutes, so a service that
-// retries a rejected credential in a loop will lock itself out. Treat
-// [ErrorCodeUnauthorized] as terminal.
+// Hetzner blocks the calling IP for ten minutes after three failed logins. A
+// service that retries a rejected credential will lock itself out, along with
+// anything else running on that address. Treat [ErrorCodeUnauthorized] as
+// terminal.
 //
 //	c := hrobot.NewBasicAuthClient("user", "pass")
 //
@@ -35,73 +35,66 @@
 //
 // Every method that reaches the network takes a [context.Context] first and
 // honours its deadline and cancellation. A client from [NewBasicAuthClient]
-// also carries a 30-second per-request timeout, so a caller who passes a
-// context without a deadline is still bounded.
+// also carries a 30-second per-request timeout, so a context without a
+// deadline is still bounded.
 //
-// Supplying a transport with [WithHTTPClient] hands that bound back to you.
-// Nothing is imposed on a client passed that way. Pair it with [WithTimeout],
-// which retimes a copy rather than the client you supplied, or with a context
-// deadline.
-//
-// Options may be given in any order.
+// [WithHTTPClient] moves that responsibility to the caller. No timeout is
+// imposed on a client passed that way. Use [WithTimeout], which retimes a copy
+// rather than the client you supplied, or set a context deadline. Options can
+// be given in any order.
 //
 // # Errors
 //
-// Three kinds of failure are distinguishable, and which one you get says where
-// the problem is.
-//
-// An [Error] is the Robot API rejecting the request, carrying its own
-// machine-readable [ErrorCode]. Match it with [IsError], which unwraps, so
-// wrapping with %w upstream does not break the match.
+// An [Error] is the API rejecting the request. It carries Robot's own
+// [ErrorCode]. Match it with [IsError], which unwraps, so wrapping with %w
+// upstream does not break the match.
 //
 //	_, err := c.ServerGet(ctx, id)
 //	if hrobot.IsError(err, hrobot.ErrorCodeServerNotFound) {
 //		// the server number is not on this account
 //	}
 //
-// A [StatusError] is an HTTP failure whose body was not a Robot error document,
-// which is what an intermediary such as a proxy or load balancer produces. It
-// carries the status so a caller can still tell a retryable 5xx from a terminal
-// 4xx.
+// A [StatusError] is an HTTP failure whose body was not a Robot error
+// document, which is what a proxy or load balancer returns. It carries the
+// status code, so a 5xx stays distinguishable from a 4xx.
 //
-// A sentinel such as [ErrInvalidServerID], [ErrEmptyIP] or [ErrNilInput] is
-// this package rejecting the call before any request is built. Those never
-// reach the network, so they cost nothing and cannot be rate limited.
+// A sentinel such as [ErrInvalidServerID], [ErrEmptyIP] or [ErrNilInput] means
+// the arguments were rejected before a request was built. These never reach
+// the network.
 //
-// Every error names the operation that produced it, so a decode failure three
-// calls deep says which call it was.
+// Errors name the operation that produced them, so a decode failure several
+// calls deep identifies the call it came from.
 //
 // # Rate limiting
 //
 // Robot reports a rate limit as [ErrorCodeRateLimitExceeded] with HTTP status
-// 403, not the 429 most APIs use. The response also carries max_request and
-// interval fields describing the budget, which this client does not currently
-// decode. There is no built-in retry or backoff. A caller that polls should
-// treat this code as a signal to back off rather than retry immediately.
+// 403, where most APIs use 429. The response also carries max_request and
+// interval fields describing the budget, which this client does not decode.
+// There is no built-in retry or backoff.
 //
 // # Empty collections
 //
-// Robot is not consistent about what an empty collection looks like. Measured
-// against the live API, the server and reverse-DNS collections answer 200 with
-// an empty array, while the IP, key and failover collections answer 404 with
-// [ErrorCodeNotFound].
+// Robot answers an empty collection differently depending on the endpoint.
+// Measured against the live API, the server and reverse-DNS collections return
+// 200 with an empty array. The IP, key and failover collections return 404
+// with [ErrorCodeNotFound].
 //
-// This package normalises both, so every list method returns an empty slice and
-// a nil error for an account that owns nothing. The normalisation is narrow on
-// purpose: only NOT_FOUND counts as empty. A 404 carrying a specific code, and
-// a 404 with no error document at all, both still fail, so a request aimed at a
-// path that does not exist stays loud rather than reading as an empty result.
+// This package normalises both, so every list method returns an empty slice
+// and a nil error for an account that owns nothing. Only NOT_FOUND is treated
+// as empty. A 404 carrying a more specific code, and a 404 with no error
+// document, both still return an error, so a request to a path that does not
+// exist does not read as an empty result.
 //
 // # Fields that change JSON type
 //
-// Several boot fields change shape with the resource's state. While the rescue
-// system is active, "os" is the string naming the running system. While it is
-// inactive, "os" is the array of systems that could be booted. The same applies
-// to "dist", "lang" and "arch", and to a cancellation's "cancellation_reason".
+// Several boot fields change shape with the state of the resource. While the
+// rescue system is active, "os" is the string naming the running system. While
+// it is inactive, "os" is an array of the systems that could be booted. The
+// same applies to "dist", "lang" and "arch", and to a cancellation's
+// "cancellation_reason".
 //
-// Those fields are typed [StringList] and [IntList], which decode both shapes
-// into a slice, so callers never type-assert. A one-element list means that
-// value is the active one.
+// These fields are typed [StringList] and [IntList], which decode both shapes
+// into a slice. A one-element slice means that value is the active one.
 //
 //	rescue, err := c.BootRescueGet(ctx, id)
 //	if rescue.Active {
@@ -110,52 +103,48 @@
 //		available := rescue.OS       // everything bootable
 //	}
 //
-// # Booting is two steps
+// # Boot configuration does not restart the server
 //
-// Arming the rescue system or an installation does not restart anything.
-// [Client.BootRescueSet] and [Client.BootLinuxSet] only set what the server
-// will boot next. The machine keeps running until [Client.ResetSet] restarts
-// it.
+// [Client.BootRescueSet] and [Client.BootLinuxSet] set what the server will
+// boot next. The machine keeps running its current system until
+// [Client.ResetSet] restarts it.
 //
-// That separation is deliberate and it is also the sharp edge.
-// [Client.BootLinuxSet] arms a destructive reinstall that runs on the next
-// boot, so arming it and later resetting the server for an unrelated reason
-// wipes the machine.
+// [Client.BootLinuxSet] arms a reinstall that erases the disk when it runs. It
+// stays armed until deleted, so a restart triggered for any other reason will
+// run it.
 //
 // # Redirects
 //
-// A client from [NewBasicAuthClient] refuses to follow a redirect that changes
-// scheme, host or port, returning [ErrRedirectCrossOrigin].
+// A client from [NewBasicAuthClient] does not follow a redirect that changes
+// scheme, host or port. It returns [ErrRedirectCrossOrigin] instead.
 //
-// This is not paranoia about a redirect that Robot does not publish. The
-// standard library decides whether to resend an Authorization header by
-// comparing hostnames, which drops the port and ignores the scheme, so a
-// redirect from https to http on the same host still carries the credentials,
-// in cleartext. A client supplied through [WithHTTPClient] keeps the standard
-// library behaviour, because its policy belongs to whoever built it.
+// The standard library decides whether to resend an Authorization header by
+// comparing hostnames, which excludes the port and ignores the scheme. Under
+// that rule a redirect from https to http on the same host still carries the
+// credentials. A client supplied through [WithHTTPClient] keeps the standard
+// library behaviour.
 //
 // # Concurrency
 //
 // [Client] is safe for concurrent use. The endpoint, user agent and http.Client
-// are fixed at construction, and the credentials are guarded, so
-// [Client.SetCredentials] may rotate them while requests are in flight.
+// are fixed at construction, and the credentials are mutex-guarded, so
+// [Client.SetCredentials] can rotate them while requests are in flight.
 //
-// # Limits
+// # Response size
 //
-// Response bodies are capped at 8 MiB, and a body over the cap reports
-// [ErrResponseTooLarge] rather than being truncated into a parse failure nobody
-// can diagnose.
+// Response bodies are read up to 8 MiB. A larger body returns
+// [ErrResponseTooLarge] rather than a truncated document.
 //
-// # Coverage of the API
+// # API coverage
 //
 // Implemented: server, boot (rescue and linux), reset, SSH key, IP, reverse DNS
-// and failover. Absent: firewall, vSwitch, Storage Box, subnet, traffic, Wake
-// on LAN, and the ordering tree.
+// and failover. Not implemented: firewall, vSwitch, Storage Box, subnet,
+// traffic, Wake on LAN and the ordering tree.
 //
 // # This fork
 //
-// Foresee Security's fork of github.com/syself/hrobot-go, itself a fork of
-// nl2go/hrobot-go. It is developed against the published Robot Webservice
-// documentation rather than tracking upstream, and its exported surface has
-// already diverged. See README.md and docs/BEHAVIOUR.md.
+// Foresee Security's fork of github.com/syself/hrobot-go, which is itself a
+// fork of nl2go/hrobot-go. It is developed against the published Robot
+// Webservice documentation rather than tracking upstream, and its exported
+// surface has diverged. See README.md and docs/BEHAVIOUR.md.
 package hrobot
