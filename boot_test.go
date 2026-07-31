@@ -279,6 +279,16 @@ func TestBootMethodsValidateArgumentsLocally(t *testing.T) {
 			},
 			wantErr: hrobot.ErrNilInput,
 		},
+		{
+			// BootLinuxSet arms a destructive reinstall, so its argument
+			// checking is the one that most needs pinning.
+			name: "BootLinuxSet rejects a zero id",
+			call: func(c *hrobot.Client) error {
+				_, err := c.BootLinuxSet(t.Context(), 0, &hrobot.LinuxSetInput{Dist: "Debian"})
+				return err
+			},
+			wantErr: hrobot.ErrInvalidServerID,
+		},
 	}
 
 	for _, tc := range tests {

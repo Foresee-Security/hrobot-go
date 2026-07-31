@@ -102,6 +102,17 @@ func (rec *recorder) only(t *testing.T) recordedRequest {
 func newServer(t *testing.T, respond http.HandlerFunc, opts ...hrobot.Option) (*hrobot.Client, *recorder) {
 	t.Helper()
 
+	url, rec := newRecordingServer(t, respond)
+	all := append([]hrobot.Option{hrobot.WithBaseURL(url)}, opts...)
+	return hrobot.NewBasicAuthClient(testUser, testPass, all...), rec
+}
+
+// newRecordingServer starts the recording server and hands back its URL, for
+// the few tests that need to build the client themselves rather than take the
+// one newServer configures.
+func newRecordingServer(t *testing.T, respond http.HandlerFunc) (string, *recorder) {
+	t.Helper()
+
 	rec := &recorder{}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec.record(r)
@@ -109,8 +120,7 @@ func newServer(t *testing.T, respond http.HandlerFunc, opts ...hrobot.Option) (*
 	}))
 	t.Cleanup(ts.Close)
 
-	all := append([]hrobot.Option{hrobot.WithBaseURL(ts.URL)}, opts...)
-	return hrobot.NewBasicAuthClient(testUser, testPass, all...), rec
+	return ts.URL, rec
 }
 
 // serveFixture replies 200 with the named file from testdata/response.

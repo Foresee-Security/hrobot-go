@@ -40,9 +40,11 @@
 // Every method that performs I/O takes a [context.Context] as its first
 // argument and honours its deadline and cancellation. A client built by
 // [NewBasicAuthClient] additionally carries a 30-second per-request timeout, so
-// a caller that passes a context without a deadline is still bounded. A client
-// built by [NewBasicAuthClientWithCustomHTTPClient] is bounded only by whatever
-// the supplied [net/http.Client] and the context impose.
+// a caller that passes a context without a deadline is still bounded.
+//
+// Supplying your own transport with [WithHTTPClient] hands that bound back to
+// you. Nothing is imposed on a client passed that way, so pair it with
+// [WithTimeout] or a context deadline.
 //
 // # Array-or-scalar fields
 //

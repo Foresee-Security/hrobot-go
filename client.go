@@ -148,6 +148,13 @@ var _ RobotClient = (*Client)(nil)
 //
 // The returned client carries a 30-second per-request timeout, so a caller
 // passing a context without a deadline is still bounded.
+//
+// Empty credentials are accepted here, unlike [Client.SetCredentials] which
+// rejects them. The asymmetry is deliberate. Construction has nowhere to report
+// an error without forcing every caller to handle one, and an empty pair simply
+// fails the first request with a 401, which is loud and immediate.
+// SetCredentials rejects them because it mutates a client that is already in
+// use, where a half-applied rotation would be neither the old pair nor the new.
 func NewBasicAuthClient(username, password string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:    DefaultBaseURL,

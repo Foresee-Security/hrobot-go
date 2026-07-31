@@ -124,6 +124,35 @@ func TestClientSetCredentials(t *testing.T) {
 	}
 }
 
+// TestConstructorAcceptsEmptyCredentials pins the asymmetry with
+// SetCredentials, which rejects them. Without this, half the invariant is
+// tested and the other half is merely current behaviour.
+func TestConstructorAcceptsEmptyCredentials(t *testing.T) {
+	t.Parallel()
+
+	url, rec := newRecordingServer(t, serveFixture(t, "server_list.json"))
+
+	configured := hrobot.NewBasicAuthClient(testUser, testPass, hrobot.WithBaseURL(url))
+	if err := configured.SetCredentials("", ""); !errors.Is(err, hrobot.ErrEmptyUsername) {
+		t.Fatalf("SetCredentials error = %v, want ErrEmptyUsername", err)
+	}
+
+	empty := hrobot.NewBasicAuthClient("", "", hrobot.WithBaseURL(url))
+	if _, err := empty.ServerGetList(t.Context()); err != nil {
+		t.Fatalf("ServerGetList: %v", err)
+	}
+
+	// The empty pair is sent rather than omitted, so the API answers 401 and
+	// the mistake is immediate instead of silent.
+	got := rec.only(t)
+	if !got.AuthOK {
+		t.Error("no Authorization header sent, want an empty basic-auth pair")
+	}
+	if got.AuthUser != "" || got.AuthPass != "" {
+		t.Errorf("basic auth = %q/%q, want both empty", got.AuthUser, got.AuthPass)
+	}
+}
+
 func TestClientValidateCredentials(t *testing.T) {
 	t.Parallel()
 

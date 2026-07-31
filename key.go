@@ -39,6 +39,11 @@ type keyResponse struct {
 }
 
 // KeyGetList returns every SSH key stored on the account.
+//
+// An account with no keys answers 404, so this returns an [Error] with
+// [ErrorCodeNotFound] rather than an empty slice. Measured against the live
+// API. Robot is not consistent about this, and [Client.ServerGetList] answers
+// the same situation with 200 and an empty array.
 func (c *Client) KeyGetList(ctx context.Context) ([]Key, error) {
 	const op = "key list"
 

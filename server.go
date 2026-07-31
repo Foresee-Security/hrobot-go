@@ -114,8 +114,11 @@ type cancellationResponse struct {
 
 // ServerGetList returns every dedicated server on the account.
 //
-// An account with no dedicated servers answers 404, which surfaces as an
-// [Error] with [ErrorCodeServerNotFound] rather than an empty slice.
+// An account with no dedicated servers answers 200 with an empty array, so this
+// returns an empty slice and a nil error. That is measured against the live API
+// rather than inferred. Robot is not consistent about this across collections,
+// and [Client.IPGetList], [Client.KeyGetList] and [Client.FailoverGetList]
+// answer the same situation with a 404.
 func (c *Client) ServerGetList(ctx context.Context) ([]Server, error) {
 	const op = "server list"
 

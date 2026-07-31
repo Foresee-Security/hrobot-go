@@ -97,6 +97,80 @@ func TestNonAPIErrorBodiesBecomeStatusErrors(t *testing.T) {
 	}
 }
 
+// TestErrorCodesRoundTrip covers every exported ErrorCode through the real
+// decode path.
+//
+// What it proves: each constant is unique, is shaped like a Robot code, and
+// matches via [hrobot.IsError] when that literal arrives in an error document.
+// A constant that is silently a duplicate of another, or that gets lowercased
+// by an editor, fails here.
+//
+// What it cannot prove: that the string is the one Hetzner actually sends. Only
+// the published error tables or live traffic settle that, and the constants
+// were checked against the tables by hand. The four in error.go's second block
+// are not in those tables at all and are marked as unproven there.
+func TestErrorCodesRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	codes := []hrobot.ErrorCode{
+		hrobot.ErrorCodeRateLimitExceeded,
+		hrobot.ErrorCodeConflict,
+		hrobot.ErrorCodeNotFound,
+		hrobot.ErrorCodeInvalidInput,
+		hrobot.ErrorCodeServerNotFound,
+		hrobot.ErrorCodeIPNotFound,
+		hrobot.ErrorCodeSubnetNotFound,
+		hrobot.ErrorCodeReverseDNSNotFound,
+		hrobot.ErrorCodeResetNotAvailable,
+		hrobot.ErrorCodeResetManualActive,
+		hrobot.ErrorCodeResetFailed,
+		hrobot.ErrorCodeBootNotAvailable,
+		hrobot.ErrorCodeBootActivationFailed,
+		hrobot.ErrorCodeBootDeactivationFailed,
+		hrobot.ErrorCodeKeyAlreadyExists,
+		hrobot.ErrorCodeKeyCreateFailed,
+		hrobot.ErrorCodeKeyUpdateFailed,
+		hrobot.ErrorCodeKeyDeleteFailed,
+		hrobot.ErrorCodeUnauthorized,
+		hrobot.ErrorCodeInternalError,
+		hrobot.ErrorCodeBootAlreadyEnabled,
+		hrobot.ErrorCodeBootBlocked,
+	}
+
+	seen := make(map[hrobot.ErrorCode]bool, len(codes))
+	for _, code := range codes {
+		if seen[code] {
+			t.Errorf("duplicate ErrorCode %q", code)
+		}
+		seen[code] = true
+
+		if code == "" {
+			t.Error("empty ErrorCode in the list")
+			continue
+		}
+		for _, r := range string(code) {
+			if (r < 'A' || r > 'Z') && r != '_' {
+				t.Errorf("ErrorCode %q contains %q, want upper case and underscores", code, r)
+				break
+			}
+		}
+	}
+
+	for _, code := range codes {
+		t.Run(string(code), func(t *testing.T) {
+			t.Parallel()
+
+			body := fmt.Sprintf(`{"error":{"code":%q,"message":"x","status":400}}`, code)
+			c, _ := newServer(t, serveBody(http.StatusBadRequest, body))
+
+			_, err := c.ServerGetList(t.Context())
+			if !hrobot.IsError(err, code) {
+				t.Fatalf("IsError(err, %q) = false, err = %v", code, err)
+			}
+		})
+	}
+}
+
 func TestAPIErrorBodiesBecomeTypedErrors(t *testing.T) {
 	t.Parallel()
 
@@ -113,9 +187,11 @@ func TestAPIErrorBodiesBecomeTypedErrors(t *testing.T) {
 			want:   hrobot.ErrorCodeUnauthorized,
 		},
 		{
+			// Robot answers a rate limit with 403, not 429. The status is part
+			// of the fixture so this stays honest about what the API sends.
 			name:   "rate limited",
-			status: http.StatusTooManyRequests,
-			body:   `{"error":{"code":"RATE_LIMIT_EXCEEDED","message":"rate limit exceeded","status":429}}`,
+			status: http.StatusForbidden,
+			body:   `{"error":{"code":"RATE_LIMIT_EXCEEDED","message":"rate limit exceeded","status":403,"max_request":200,"interval":3600}}`,
 			want:   hrobot.ErrorCodeRateLimitExceeded,
 		},
 		{

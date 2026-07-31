@@ -32,6 +32,10 @@ type failoverResponse struct {
 }
 
 // FailoverGetList returns every failover address on the account.
+//
+// An account with no failover addresses answers 404, so this returns an [Error]
+// with [ErrorCodeNotFound] rather than an empty slice. Measured against the
+// live API. See [Client.ServerGetList] for why that differs per collection.
 func (c *Client) FailoverGetList(ctx context.Context) ([]Failover, error) {
 	const op = "failover list"
 

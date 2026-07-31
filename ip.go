@@ -40,6 +40,10 @@ type ipResponse struct {
 }
 
 // IPGetList returns every single IPv4 address on the account.
+//
+// An account with no single addresses answers 404, so this returns an [Error]
+// with [ErrorCodeNotFound] rather than an empty slice. Measured against the
+// live API. See [Client.ServerGetList] for why that differs per collection.
 func (c *Client) IPGetList(ctx context.Context) ([]IP, error) {
 	const op = "ip list"
 
